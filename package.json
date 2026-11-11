@@ -1,0 +1,24 @@
+{
+  "name": "starmemory",
+  "private": true,
+  "version": "0.1.0",
+  "description": "《星憶旅團》2D 網頁多人線上 RPG（monorepo）",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @starmemory/client",
+    "build": "npm run build -w @starmemory/client",
+    "preview": "npm run preview -w @starmemory/client",
+    "server": "npm run start -w @starmemory/server",
+    "test": "npm run test -w @starmemory/shared",
+    "typecheck": "npm run typecheck --workspaces",
+    "gen:assets": "node tools/gen-placeholders.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
