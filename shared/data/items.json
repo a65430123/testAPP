@@ -1,0 +1,14 @@
+[
+  { "id": "potion_hp_s", "name": "小瓶療傷露", "type": "consumable", "maxStack": 99, "description": "回復少量 HP。" },
+  { "id": "potion_sp_s", "name": "小瓶靈泉水", "type": "consumable", "maxStack": 99, "description": "回復少量 SP。" },
+  { "id": "feather_return", "name": "回城羽毛", "type": "consumable", "maxStack": 99, "description": "傳回記錄點。" },
+  { "id": "novice_sword", "name": "見習長劍", "type": "equipment", "maxStack": 1, "description": "劍衛的入門武器。" },
+  { "id": "novice_staff", "name": "見習法杖", "type": "equipment", "maxStack": 1, "description": "星術士的入門武器。" },
+  { "id": "novice_bow", "name": "見習短弓", "type": "equipment", "maxStack": 1, "description": "遊獵者的入門武器。" },
+  { "id": "novice_dagger", "name": "見習匕首", "type": "equipment", "maxStack": 1, "description": "影行者的入門武器。" },
+  { "id": "novice_mace", "name": "見習權杖", "type": "equipment", "maxStack": 1, "description": "祈光士的入門武器。" },
+  { "id": "novice_axe", "name": "見習手斧", "type": "equipment", "maxStack": 1, "description": "匠商的入門武器。" },
+  { "id": "novice_cloth_cap", "name": "見習布帽", "type": "equipment", "maxStack": 1, "description": "樸素的布帽。" },
+  { "id": "mat_sticky_dew", "name": "黏露珠", "type": "material", "maxStack": 999, "description": "啵啵露身上的黏稠露珠。" },
+  { "id": "mat_soft_fluff", "name": "柔軟絨毛", "type": "material", "maxStack": 999, "description": "絨尾兔的絨毛。" }
+]

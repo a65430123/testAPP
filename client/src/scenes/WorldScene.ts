@@ -27,6 +27,7 @@ import {
   type ChatMessage,
   type ChatSendMessage,
   type CollisionGrid,
+  type InventoryMessage,
   type IsoGeometry,
   type MoveRejectMessage,
   type MoveRequest,
@@ -46,6 +47,7 @@ import {
   type Session,
 } from '../net/session';
 import type { ChatBox } from '../ui/chat';
+import type { InventoryPanel } from '../ui/inventory';
 
 /** 按住滑鼠時每隔多久重新指定一次目的地（毫秒） */
 const HOLD_RETARGET_MS = 200;
@@ -68,6 +70,9 @@ const UI_DEPTH = 1000000;
 interface RemotePlayer {
   entity: PlayerEntity;
   buffer: SnapshotBuffer;
+  /** 最後一次收到的伺服器位置，用來分辨這次變動是不是位置變動 */
+  lastX: number;
+  lastY: number;
 }
 
 /**
@@ -83,6 +88,7 @@ export class WorldScene extends Phaser.Scene {
   private grid!: CollisionGrid;
   private session!: Session;
   private chat!: ChatBox;
+  private inventory!: InventoryPanel;
 
   private room: MapRoomConnection | null = null;
   private local: PlayerEntity | null = null;
@@ -135,6 +141,7 @@ export class WorldScene extends Phaser.Scene {
     this.grid = buildCollisionGrid(mapData);
     this.session = this.registry.get(REGISTRY.session) as Session;
     this.chat = this.registry.get(REGISTRY.chat) as ChatBox;
+    this.inventory = this.registry.get(REGISTRY.inventory) as InventoryPanel;
 
     this.createGround();
     this.createProps();
@@ -341,6 +348,7 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.system, (message: SystemMessage) => this.chat.addSystem(message.text));
     room.onMessage(MSG.moveReject, (message: MoveRejectMessage) => this.onMoveRejected(message));
     room.onMessage(MSG.transfer, (message: TransferMessage) => void this.onTransfer(message));
+    room.onMessage(MSG.inventory, (message: InventoryMessage) => this.inventory.update(message));
     room.onLeave((code: number) => this.onRoomLeave(code));
 
     this.chat.onSend((channel: ChatChannel, text: string) => {
@@ -348,6 +356,8 @@ export class WorldScene extends Phaser.Scene {
       room.send(MSG.chat, message);
     });
     this.chat.addSystem(`已進入 ${mapDisplayName(this.mapId)}`);
+    // 處理函式都註冊好了，向伺服器要一次背包內容
+    room.send(MSG.inventory);
   }
 
   private addLocalPlayer(player: PlayerView): void {
@@ -355,7 +365,7 @@ export class WorldScene extends Phaser.Scene {
     this.serverX = player.x;
     this.serverY = player.y;
     this.serverChangedAt = this.time.now;
-    this.local = new PlayerEntity(this, this.geo, player.name, player.x, player.y, true);
+    this.local = new PlayerEntity(this, this.geo, player.name, player.level, player.x, player.y, true);
     this.cameras.main.startFollow(this.local.sprite, true, 0.15, 0.15);
     this.status.setVisible(false);
   }
@@ -364,20 +374,34 @@ export class WorldScene extends Phaser.Scene {
     const buffer = new SnapshotBuffer(SERVER_TICK_MS);
     buffer.reset(performance.now(), player.x, player.y);
     this.remotes.set(sessionId, {
-      entity: new PlayerEntity(this, this.geo, player.name, player.x, player.y, false),
+      entity: new PlayerEntity(this, this.geo, player.name, player.level, player.x, player.y, false),
       buffer,
+      lastX: player.x,
+      lastY: player.y,
     });
   }
 
-  /** 伺服器同步了某位玩家的新位置 */
+  /** 伺服器同步了某位玩家的新狀態（位置或等級） */
   private onPlayerChanged(sessionId: string, player: PlayerView): void {
     if (sessionId === this.room?.sessionId) {
-      this.serverX = player.x;
-      this.serverY = player.y;
-      this.serverChangedAt = this.time.now;
+      this.local?.setInfo(player.name, player.level);
+      if (player.x !== this.serverX || player.y !== this.serverY) {
+        this.serverX = player.x;
+        this.serverY = player.y;
+        this.serverChangedAt = this.time.now;
+      }
       return;
     }
-    this.remotes.get(sessionId)?.buffer.push(performance.now(), player.x, player.y);
+    const remote = this.remotes.get(sessionId);
+    if (!remote) {
+      return;
+    }
+    remote.entity.setInfo(player.name, player.level);
+    if (player.x !== remote.lastX || player.y !== remote.lastY) {
+      remote.lastX = player.x;
+      remote.lastY = player.y;
+      remote.buffer.push(performance.now(), player.x, player.y);
+    }
   }
 
   private onChat(message: ChatMessage): void {

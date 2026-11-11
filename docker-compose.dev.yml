@@ -1,0 +1,21 @@
+# 開發用：只啟動 PostgreSQL。正式部署的 Docker Compose（含 Nginx、HTTPS）會在部署階段另外提供。
+# 用法：docker compose -f docker-compose.dev.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: starmemory
+      POSTGRES_PASSWORD: starmemory
+      POSTGRES_DB: starmemory
+    ports:
+      - '5432:5432'
+    volumes:
+      - starmemory_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U starmemory']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  starmemory_pgdata:

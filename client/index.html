@@ -18,66 +18,194 @@
         height: 100%;
       }
 
-      /* 登入畫面 */
-      #login {
+      /* 登入與選角畫面 */
+      .overlay {
         position: fixed;
         inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow-y: auto;
         background: radial-gradient(circle at 50% 35%, #2b4a3a, #10141c 75%);
         z-index: 20;
       }
-      .login-box {
-        width: min(320px, calc(100vw - 48px));
-        padding: 28px 24px;
+      .panel {
+        width: min(340px, calc(100vw - 32px));
+        margin: 16px 0;
+        padding: 26px 24px;
         border-radius: 14px;
-        background: rgba(16, 22, 30, 0.88);
+        background: rgba(16, 22, 30, 0.9);
         color: #fff;
         text-align: center;
         box-sizing: border-box;
       }
-      .login-box h1 {
-        margin: 0 0 6px;
-        font-size: 28px;
-        letter-spacing: 4px;
+      .panel.wide {
+        width: min(480px, calc(100vw - 32px));
       }
-      .login-box p {
-        margin: 0 0 18px;
+      .panel h1 {
+        margin: 0 0 12px;
+        font-size: 26px;
+        letter-spacing: 3px;
+      }
+      .panel h2 {
+        margin: 18px 0 10px;
+        font-size: 16px;
+      }
+      .panel p {
+        margin: 0 0 12px;
         color: #b9c7c0;
         font-size: 14px;
       }
-      .login-box input,
-      .login-box button {
-        width: 100%;
+      .panel input,
+      .panel button {
         box-sizing: border-box;
-        padding: 10px 12px;
         border-radius: 8px;
-        font-size: 16px;
+        font-size: 15px;
         font-family: inherit;
       }
-      .login-box input {
+      .panel input {
+        display: block;
+        width: 100%;
+        padding: 10px 12px;
+        margin-bottom: 10px;
         border: 1px solid #47604f;
         background: #0e141a;
         color: #fff;
-        margin-bottom: 10px;
       }
-      .login-box button {
+      .panel input[hidden] {
+        display: none;
+      }
+      .panel button {
+        padding: 9px 12px;
+        border: 1px solid #47604f;
+        background: #18222b;
+        color: #dfe9e3;
+        cursor: pointer;
+      }
+      .panel button.primary {
+        width: 100%;
         border: none;
         background: #5fae6b;
         color: #0d1a12;
         font-weight: 700;
-        cursor: pointer;
       }
-      .login-box button:disabled {
+      .panel button.active {
+        border-color: #5fae6b;
+        background: #274a31;
+        color: #fff;
+      }
+      .panel button.link {
+        margin-top: 14px;
+        border: none;
+        background: none;
+        color: #9fb4a8;
+        text-decoration: underline;
+      }
+      .panel button:disabled {
         opacity: 0.6;
         cursor: default;
       }
-      .login-error {
+      .panel .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .panel .tabs button {
+        flex: 1;
+      }
+      .panel .error {
         min-height: 20px;
         margin-top: 10px;
         color: #ff9d9d;
         font-size: 14px;
+      }
+      .panel .muted {
+        color: #8fa399;
+        font-size: 13px;
+      }
+      .char-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .panel .char-card {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        padding: 12px 14px;
+        text-align: left;
+      }
+      .panel .char-card:hover {
+        border-color: #5fae6b;
+      }
+      .char-card strong {
+        font-size: 17px;
+        color: #fff;
+      }
+      .char-card .muted {
+        margin-left: auto;
+      }
+      .class-list {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      /* 背包視窗 */
+      #inventory {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 10;
+        color: #fff;
+        font-size: 14px;
+        text-align: right;
+      }
+      .inv-toggle {
+        padding: 6px 14px;
+        border: 1px solid #47604f;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        font-size: 14px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .inv-body {
+        width: min(300px, calc(100vw - 24px));
+        margin-top: 6px;
+        padding: 10px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.6);
+        text-align: left;
+        box-sizing: border-box;
+      }
+      .inv-coins {
+        margin-bottom: 8px;
+        color: #ffd97a;
+      }
+      .inv-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+        max-height: 260px;
+        overflow-y: auto;
+      }
+      .inv-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 5px 8px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .inv-qty {
+        color: #b9c7c0;
+      }
+      .inv-empty {
+        grid-column: 1 / -1;
+        color: #8fa399;
       }
 
       /* 聊天視窗 */

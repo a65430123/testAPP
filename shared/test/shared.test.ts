@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addItemToInventory,
   advanceMove,
+  CLASSES,
+  computeMaxHp,
+  computeMaxSp,
+  getClassDef,
+  getItemDef,
+  newStats,
+  validatePassword,
+  validateUsername,
+  type InventoryItem,
   buildCollisionGrid,
   createMoveState,
   findPath,
@@ -221,5 +231,65 @@ describe('名稱與聊天內容檢查', () => {
     expect(sanitizeChatText('   ')).toBe('');
     expect([...sanitizeChatText('啊'.repeat(500))]).toHaveLength(120);
     expect(sanitizeChatText(null)).toBe('');
+  });
+});
+
+describe('帳號與密碼檢查', () => {
+  it('帳號', () => {
+    expect(validateUsername('star_01')).toBeNull();
+    expect(validateUsername('ab')).not.toBeNull();
+    expect(validateUsername('有中文')).not.toBeNull();
+    expect(validateUsername('a'.repeat(21))).not.toBeNull();
+  });
+
+  it('密碼', () => {
+    expect(validatePassword('12345678')).toBeNull();
+    expect(validatePassword('1234567')).not.toBeNull();
+    expect(validatePassword('a'.repeat(73))).not.toBeNull();
+    // 中文字每個佔 3 個位元組，25 個字就超過 bcrypt 的 72 位元組上限
+    expect(validatePassword('密'.repeat(25))).not.toBeNull();
+  });
+});
+
+describe('職業與衍生能力值', () => {
+  it('資料表有 6 個初始職業，起始道具都存在', () => {
+    expect(CLASSES).toHaveLength(6);
+    for (const cls of CLASSES) {
+      for (const item of cls.startItems) {
+        expect(getItemDef(item.itemId)).toBeDefined();
+      }
+    }
+  });
+
+  it('依 GDD 公式計算 MaxHP／MaxSP', () => {
+    const cls = getClassDef('bladeguard')!;
+    // (100 + 1×30) × 1.05 = 136.5 → 136；(30 + 1×4) × 1.05 = 35.7 → 35
+    expect(computeMaxHp(cls, 1, newStats())).toBe(136);
+    expect(computeMaxSp(cls, 1, newStats())).toBe(35);
+  });
+});
+
+describe('背包', () => {
+  it('先堆疊再放空格，並依格子排序', () => {
+    const inv = [{ slot: 1, itemId: 'potion_hp_s', quantity: 95 }];
+    expect(addItemToInventory(inv, 'potion_hp_s', 10)).toBe(true);
+    expect(inv).toEqual([
+      { slot: 0, itemId: 'potion_hp_s', quantity: 6 },
+      { slot: 1, itemId: 'potion_hp_s', quantity: 99 },
+    ]);
+  });
+
+  it('不可堆疊的道具各佔一格', () => {
+    const inv: InventoryItem[] = [];
+    expect(addItemToInventory(inv, 'novice_sword', 2)).toBe(true);
+    expect(inv.map((i) => i.slot)).toEqual([0, 1]);
+  });
+
+  it('放不下時完全不變動；不存在的道具或不合法的數量會失敗', () => {
+    const inv = [{ slot: 0, itemId: 'novice_sword', quantity: 1 }];
+    expect(addItemToInventory(inv, 'novice_sword', 2, 2)).toBe(false);
+    expect(inv).toEqual([{ slot: 0, itemId: 'novice_sword', quantity: 1 }]);
+    expect(addItemToInventory(inv, 'no_such_item', 1)).toBe(false);
+    expect(addItemToInventory(inv, 'potion_hp_s', -3)).toBe(false);
   });
 });

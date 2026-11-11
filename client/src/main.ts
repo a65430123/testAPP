@@ -1,13 +1,35 @@
 import Phaser from 'phaser';
+import { REGISTRY } from './assets';
+import { clearSavedAuth, loadSavedAuth, saveAuth, type Auth, type Session } from './net/session';
 import { BootScene } from './scenes/BootScene';
 import { WorldScene } from './scenes/WorldScene';
+import { showAuth } from './ui/auth';
+import { showCharacterSelect } from './ui/characters';
 import { ChatBox } from './ui/chat';
-import { showLogin } from './ui/login';
-import { REGISTRY } from './assets';
+import { InventoryPanel } from './ui/inventory';
 
-// 遊戲進入點：先登入，成功後才建立 Phaser 遊戲實例
-const session = await showLogin();
+/** 登入（或沿用上次保存的憑證）→ 選角，直到取得可以進入遊戲的連線資訊 */
+async function obtainSession(): Promise<Session> {
+  let auth: Auth | null = loadSavedAuth();
+  for (;;) {
+    if (!auth) {
+      auth = await showAuth();
+      saveAuth(auth);
+    }
+    const choice = await showCharacterSelect(auth);
+    if (choice === 'logout') {
+      clearSavedAuth();
+      auth = null;
+      continue;
+    }
+    return { ...auth, character: choice, mapId: choice.mapId };
+  }
+}
+
+// 遊戲進入點：先完成登入與選角，才建立 Phaser 遊戲實例
+const session = await obtainSession();
 const chat = new ChatBox();
+const inventory = new InventoryPanel();
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -23,10 +45,11 @@ const game = new Phaser.Game({
     height: '100%',
   },
   callbacks: {
-    // 把登入資訊與聊天視窗放進全域登錄表，讓各場景取用
+    // 把連線資訊與介面元件放進全域登錄表，讓各場景取用
     preBoot: (g) => {
       g.registry.set(REGISTRY.session, session);
       g.registry.set(REGISTRY.chat, chat);
+      g.registry.set(REGISTRY.inventory, inventory);
     },
   },
   scene: [BootScene, WorldScene],

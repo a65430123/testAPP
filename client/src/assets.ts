@@ -23,6 +23,7 @@ export const PLAYER_FRAME = { width: 32, height: 48, footY: 44 } as const;
 export const REGISTRY = {
   session: 'session',
   chat: 'chat',
+  inventory: 'inventory',
 } as const;
 
 /** 地圖資料（Tiled JSON），以地圖代號為鍵。新增地圖時在這裡加一行。 */

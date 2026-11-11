@@ -1,5 +1,7 @@
 // 用戶端與伺服器之間的通訊協定：房間名稱、訊息代號、訊息內容型別與共用的驗證規則
 
+import type { InventoryItem } from './character';
+
 /** Colyseus 房間類型名稱：每張地圖一個房間，以 mapId 區分 */
 export const ROOM_MAP = 'map';
 
@@ -19,6 +21,15 @@ export const MOVE_MIN_INTERVAL_MS = 80;
 export const CHAT_MAX_LENGTH = 120;
 export const CHAT_MIN_INTERVAL_MS = 800;
 
+/** 定時存檔間隔（毫秒）：有變動的角色每隔這麼久寫入資料庫一次 */
+export const AUTOSAVE_INTERVAL_MS = 30_000;
+
+/** 帳號與密碼長度限制（bcrypt 只會使用密碼的前 72 個位元組） */
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 20;
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 72;
+
 /** 角色名稱長度限制 */
 export const NAME_MIN_LENGTH = 2;
 export const NAME_MAX_LENGTH = 12;
@@ -36,6 +47,11 @@ export const MSG = {
   chat: 'chat',
   /** 伺服器 → 用戶端：系統訊息 */
   system: 'system',
+  /**
+   * 用戶端 → 伺服器：要求背包內容（不帶資料，進入房間並準備好接收後送一次）
+   * 伺服器 → 用戶端（只傳給本人）：背包內容與星幣
+   */
+  inventory: 'inventory',
   /** 伺服器 → 用戶端：踩到傳送點，請改連另一張地圖的房間 */
   transfer: 'transfer',
 } as const;
@@ -89,16 +105,39 @@ export interface TransferMessage {
   mapId: string;
 }
 
-export interface LoginRequest {
-  name: string;
+/** 註冊與登入共用的請求內容 */
+export interface AuthRequest {
+  username: string;
+  password: string;
 }
 
-export interface LoginResponse {
-  /** 之後加入房間時要帶上的憑證 */
+export interface AuthResponse {
+  /** JWT，之後呼叫 API 與加入房間時都要帶上 */
   token: string;
+  username: string;
+}
+
+/** 選角畫面顯示的角色摘要 */
+export interface CharacterSummary {
+  id: number;
   name: string;
-  /** 角色目前所在地圖，用戶端應加入這張地圖的房間 */
+  classId: string;
+  level: number;
   mapId: string;
+}
+
+export interface CharacterListResponse {
+  characters: CharacterSummary[];
+  maxCharacters: number;
+}
+
+export interface CreateCharacterRequest {
+  name: string;
+  classId: string;
+}
+
+export interface CreateCharacterResponse {
+  character: CharacterSummary;
 }
 
 export interface ErrorResponse {
@@ -108,7 +147,46 @@ export interface ErrorResponse {
 /** 加入地圖房間時的參數 */
 export interface JoinMapOptions {
   token: string;
+  characterId: number;
   mapId: string;
+}
+
+/** 背包同步訊息 */
+export interface InventoryMessage {
+  items: InventoryItem[];
+  coins: number;
+}
+
+/**
+ * 檢查帳號名稱。
+ * @returns 合法時回傳 null，否則回傳錯誤訊息
+ */
+export function validateUsername(username: unknown): string | null {
+  if (typeof username !== 'string') {
+    return '請輸入帳號';
+  }
+  if (username.length < USERNAME_MIN_LENGTH || username.length > USERNAME_MAX_LENGTH) {
+    return `帳號長度需為 ${USERNAME_MIN_LENGTH}–${USERNAME_MAX_LENGTH} 個字元`;
+  }
+  if (!/^[A-Za-z0-9_]+$/.test(username)) {
+    return '帳號只能使用英文字母、數字與底線';
+  }
+  return null;
+}
+
+/**
+ * 檢查密碼。
+ * @returns 合法時回傳 null，否則回傳錯誤訊息
+ */
+export function validatePassword(password: unknown): string | null {
+  if (typeof password !== 'string') {
+    return '請輸入密碼';
+  }
+  const bytes = new TextEncoder().encode(password).length;
+  if (password.length < PASSWORD_MIN_LENGTH || bytes > PASSWORD_MAX_LENGTH) {
+    return `密碼長度需為 ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} 個字元`;
+  }
+  return null;
 }
 
 /**

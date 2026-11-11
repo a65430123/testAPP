@@ -19,7 +19,10 @@
     "smoke": "npm run smoke -w @starmemory/server",
     "test": "npm run test -w @starmemory/shared",
     "typecheck": "npm run typecheck --workspaces",
-    "gen:assets": "node tools/gen-placeholders.mjs"
+    "gen:assets": "node tools/gen-placeholders.mjs",
+    "migrate": "npm run migrate -w @starmemory/server",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker-compose.dev.yml down"
   },
   "engines": {
     "node": ">=20"

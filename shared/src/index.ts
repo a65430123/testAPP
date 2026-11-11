@@ -6,3 +6,5 @@ export * from './pathfinding';
 export * from './movement';
 export * from './interpolation';
 export * from './protocol';
+export * from './data';
+export * from './character';

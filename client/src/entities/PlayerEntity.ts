@@ -53,6 +53,7 @@ export class PlayerEntity {
     private readonly scene: Phaser.Scene,
     private readonly geo: IsoGeometry,
     name: string,
+    level: number,
     tileX: number,
     tileY: number,
     isLocal: boolean,
@@ -67,7 +68,7 @@ export class PlayerEntity {
     this.sprite.play(ANIM.idleFront);
 
     this.label = scene.add
-      .text(pos.x, pos.y, name, {
+      .text(pos.x, pos.y, '', {
         fontSize: '13px',
         color: isLocal ? '#ffe98a' : '#ffffff',
         stroke: '#000000',
@@ -75,7 +76,16 @@ export class PlayerEntity {
       })
       .setOrigin(0.5, 0)
       .setDepth(LABEL_DEPTH);
+    this.setInfo(name, level);
     this.layout();
+  }
+
+  /** 更新名牌上的等級與名稱 */
+  setInfo(name: string, level: number): void {
+    const text = `Lv.${level} ${name}`;
+    if (this.label.text !== text) {
+      this.label.setText(text);
+    }
   }
 
   /** 設定位置（格座標），並依移動方向更新面向 */
