@@ -8,3 +8,5 @@ export * from './interpolation';
 export * from './protocol';
 export * from './data';
 export * from './character';
+export * from './progression';
+export * from './combat';

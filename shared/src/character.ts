@@ -98,3 +98,20 @@ export function addItemToInventory(
   inventory.push(...next);
   return true;
 }
+
+/**
+ * 從指定格子移除若干數量；數量歸零時移除整格。
+ * @returns 是否成功（格子不存在或數量不足時失敗且不變動）
+ */
+export function removeFromSlot(inventory: InventoryItem[], slot: number, quantity: number): boolean {
+  const index = inventory.findIndex((item) => item.slot === slot);
+  const item = inventory[index];
+  if (!item || !Number.isInteger(quantity) || quantity <= 0 || item.quantity < quantity) {
+    return false;
+  }
+  item.quantity -= quantity;
+  if (item.quantity === 0) {
+    inventory.splice(index, 1);
+  }
+  return true;
+}

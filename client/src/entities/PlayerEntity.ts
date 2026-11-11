@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { tileToWorld, type IsoGeometry } from '@starmemory/shared';
 import { PLAYER_FRAME, TEXTURE } from '../assets';
+import { HpBar } from './HpBar';
 
 /** 玩家圖的放大倍率 */
 const PLAYER_SCALE = 1.5;
@@ -46,6 +47,8 @@ export class PlayerEntity {
   private readonly label: Phaser.GameObjects.Text;
   private bubble: Phaser.GameObjects.Text | null = null;
   private bubbleTimer: Phaser.Time.TimerEvent | null = null;
+  private readonly hpBar: HpBar;
+  private dead = false;
   private facingBack = false;
   private lastMovedAt = -Infinity;
 
@@ -76,6 +79,8 @@ export class PlayerEntity {
       })
       .setOrigin(0.5, 0)
       .setDepth(LABEL_DEPTH);
+    this.hpBar = new HpBar(scene, 36, 0x58c46a, LABEL_DEPTH);
+    this.hpBar.setVisible(false);
     this.setInfo(name, level);
     this.layout();
   }
@@ -108,8 +113,30 @@ export class PlayerEntity {
     this.layout();
   }
 
+  /** 更新血條（滿血時不顯示）與倒地狀態 */
+  setHp(hp: number, maxHp: number): void {
+    this.hpBar.set(hp, maxHp);
+    this.hpBar.setVisible(hp < maxHp && hp > 0);
+    const dead = hp <= 0;
+    if (dead !== this.dead) {
+      this.dead = dead;
+      // 倒地：角色躺平並變半透明
+      this.sprite.setAngle(dead ? 90 : 0).setAlpha(dead ? 0.6 : 1);
+    }
+  }
+
+  /** 受擊時閃紅 */
+  flash(): void {
+    this.sprite.setTint(0xff8080);
+    this.scene.time.delayedCall(100, () => this.sprite.clearTint());
+  }
+
   /** 每一幀呼叫：依是否正在移動切換動畫 */
   updateAnimation(): void {
+    if (this.dead) {
+      this.sprite.play(ANIM.idleFront, true);
+      return;
+    }
     const moving = this.scene.time.now - this.lastMovedAt < IDLE_GRACE_MS;
     const key = moving
       ? this.facingBack
@@ -146,12 +173,14 @@ export class PlayerEntity {
   private layout(): void {
     const { x, y } = this.sprite;
     this.label.setPosition(x, y + 4);
-    this.bubble?.setPosition(x, y - PLAYER_FRAME.footY * PLAYER_SCALE - 4);
+    this.hpBar.setPosition(x, y - PLAYER_FRAME.footY * PLAYER_SCALE - 2);
+    this.bubble?.setPosition(x, y - PLAYER_FRAME.footY * PLAYER_SCALE - 10);
   }
 
   destroy(): void {
     this.bubbleTimer?.remove();
     this.bubble?.destroy();
+    this.hpBar.destroy();
     this.label.destroy();
     this.sprite.destroy();
   }

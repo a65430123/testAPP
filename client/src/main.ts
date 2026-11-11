@@ -7,6 +7,8 @@ import { showAuth } from './ui/auth';
 import { showCharacterSelect } from './ui/characters';
 import { ChatBox } from './ui/chat';
 import { InventoryPanel } from './ui/inventory';
+import { SkillBar } from './ui/skills';
+import { StatusPanel } from './ui/status';
 
 /** 登入（或沿用上次保存的憑證）→ 選角，直到取得可以進入遊戲的連線資訊 */
 async function obtainSession(): Promise<Session> {
@@ -30,6 +32,8 @@ async function obtainSession(): Promise<Session> {
 const session = await obtainSession();
 const chat = new ChatBox();
 const inventory = new InventoryPanel();
+const status = new StatusPanel(session.character.name, session.character.classId);
+const skills = new SkillBar(session.character.classId);
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -50,6 +54,8 @@ const game = new Phaser.Game({
       g.registry.set(REGISTRY.session, session);
       g.registry.set(REGISTRY.chat, chat);
       g.registry.set(REGISTRY.inventory, inventory);
+      g.registry.set(REGISTRY.status, status);
+      g.registry.set(REGISTRY.skills, skills);
     },
   },
   scene: [BootScene, WorldScene],

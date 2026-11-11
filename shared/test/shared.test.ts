@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItemToInventory,
+  allocateStat,
+  applyExp,
+  computePlayerCombatStats,
+  ELEMENT_TABLE,
+  expLevelModifier,
+  expToNext,
+  findMonsterSpawns,
+  getMonsterDef,
+  hitRate,
+  monsterCombatant,
+  MONSTERS,
+  rollAttack,
+  statCost,
+  validateGameData,
   advanceMove,
   CLASSES,
   computeMaxHp,
@@ -291,5 +305,133 @@ describe('背包', () => {
     expect(inv).toEqual([{ slot: 0, itemId: 'novice_sword', quantity: 1 }]);
     expect(addItemToInventory(inv, 'no_such_item', 1)).toBe(false);
     expect(addItemToInventory(inv, 'potion_hp_s', -3)).toBe(false);
+  });
+});
+
+describe('資料表完整性', () => {
+  it('魔物掉落、職業技能與起始道具的參照都存在', () => {
+    expect(validateGameData()).toEqual([]);
+    expect(MONSTERS.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('經驗值與素質配點', () => {
+  it('升級所需經驗符合 GDD 公式', () => {
+    expect(expToNext(1)).toBe(100);
+    expect(expToNext(10)).toBe(10647);
+  });
+
+  it('可連升多級，剩餘經驗保留', () => {
+    // 1→2 需 100，2→3 需 331
+    expect(applyExp(1, 0, 100 + 331 + 5)).toEqual({ level: 3, exp: 5, levelsGained: 2 });
+    expect(applyExp(1, 90, 5)).toEqual({ level: 1, exp: 95, levelsGained: 0 });
+    expect(applyExp(100, 0, 999999)).toEqual({ level: 100, exp: 0, levelsGained: 0 });
+  });
+
+  it('等級差經驗倍率', () => {
+    expect(expLevelModifier(1, 6)).toBe(1.1);
+    expect(expLevelModifier(5, 5)).toBe(1);
+    expect(expLevelModifier(10, 3)).toBe(0.7);
+    expect(expLevelModifier(30, 1)).toBe(0.1);
+  });
+
+  it('素質花費遞增，點數不足或已達上限時不變動', () => {
+    expect(statCost(5)).toBe(1);
+    expect(statCost(10)).toBe(2);
+    expect(statCost(99)).toBe(10);
+    const stats = newStats();
+    expect(allocateStat(stats, 10, 'pow')).toBe(1);
+    expect(stats.pow).toBe(6);
+    stats.pow = 20;
+    expect(allocateStat(stats, 2, 'pow')).toBeNull();
+    expect(stats.pow).toBe(20);
+    stats.con = 100;
+    expect(allocateStat(stats, 999, 'con')).toBeNull();
+  });
+});
+
+describe('傷害公式', () => {
+  const bladeguard = getClassDef('bladeguard')!;
+  const starcaller = getClassDef('starcaller')!;
+  const bobolu = monsterCombatant(getMonsterDef('bobolu')!);
+  /** 依序回傳指定數值的假亂數 */
+  const seq = (...values: number[]) => {
+    let i = 0;
+    return () => values[i++ % values.length]!;
+  };
+
+  it('玩家戰鬥數值符合 GDD 公式', () => {
+    const s = computePlayerCombatStats(bladeguard, 1, newStats());
+    // 12 + 5×2 + 0 + 2 + 0 = 24
+    expect(s.atk).toBe(24);
+    expect(s.hit).toBe(11);
+    expect(s.eva).toBe(11);
+    expect(s.crit).toBeCloseTo(2.5);
+    expect(s.maxHp).toBe(136);
+    // 750 × (1 − (5×0.004 + 5×0.001)) = 731.25 → 731
+    expect(s.attackIntervalMs).toBe(731);
+  });
+
+  it('命中率介於 5%–95%', () => {
+    const player = computePlayerCombatStats(bladeguard, 1, newStats());
+    expect(hitRate(player, bobolu)).toBeCloseTo(89.5);
+    expect(hitRate({ ...player, hit: 0 }, { ...bobolu, eva: 999 })).toBe(5);
+    expect(hitRate({ ...player, hit: 999 }, bobolu)).toBe(95);
+  });
+
+  it('物理攻擊：未暴擊、命中、無浮動時的傷害', () => {
+    const player = computePlayerCombatStats(bladeguard, 1, newStats());
+    // 亂數依序用於：暴擊（0.99 不暴擊）、命中（0 命中）、浮動（0.5 即 ×1）
+    const result = rollAttack(player, bobolu, { kind: 'physical', element: 'neutral', power: 1 }, seq(0.99, 0, 0.5));
+    // 24 × 1 × 體型修正 0.85 × 100/101 = 20.19 → 20
+    expect(result).toEqual({ miss: false, crit: false, damage: 20 });
+  });
+
+  it('暴擊必定命中且傷害 ×1.5；未命中時傷害為 0', () => {
+    const player = computePlayerCombatStats(bladeguard, 1, newStats());
+    const crit = rollAttack(player, bobolu, { kind: 'physical', element: 'neutral', power: 1 }, seq(0, 0.5));
+    expect(crit).toEqual({ miss: false, crit: true, damage: 30 });
+    const miss = rollAttack(player, bobolu, { kind: 'physical', element: 'neutral', power: 1 }, seq(0.99, 0.99));
+    expect(miss).toEqual({ miss: true, crit: false, damage: 0 });
+  });
+
+  it('魔法必中、不暴擊，並套用屬性相剋', () => {
+    const player = computePlayerCombatStats(starcaller, 1, newStats());
+    // 魔攻 12 + 10 = 22；啵啵露是潮屬性
+    const flame = rollAttack(player, bobolu, { kind: 'magical', element: 'flame', power: 1.6 }, seq(0.5));
+    expect(flame).toEqual({ miss: false, crit: false, damage: Math.floor(22 * 1.6 * 0.5) });
+    const storm = rollAttack(player, bobolu, { kind: 'magical', element: 'storm', power: 1 }, seq(0.5));
+    expect(storm.damage).toBe(22);
+    expect(ELEMENT_TABLE.rock.tide).toBe(1.5);
+    expect(ELEMENT_TABLE.radiant.eclipse).toBe(1.5);
+    expect(ELEMENT_TABLE.tide.tide).toBe(0.25);
+  });
+
+  it('傷害至少為 1', () => {
+    const player = computePlayerCombatStats(bladeguard, 1, newStats());
+    const tank = { ...bobolu, def: 100000 };
+    expect(rollAttack(player, tank, { kind: 'physical', element: 'neutral', power: 1 }, seq(0.99, 0, 0.5)).damage).toBe(1);
+  });
+});
+
+describe('魔物重生區', () => {
+  it('解析 monster_spawns 物件層', () => {
+    const map: TiledMap = {
+      type: 'map', orientation: 'isometric', width: 10, height: 10, tilewidth: 64, tileheight: 32,
+      tilesets: [],
+      layers: [{
+        type: 'objectgroup', id: 1, name: 'monster_spawns', visible: true, opacity: 1, x: 0, y: 0,
+        objects: [{
+          id: 1, name: 'bobolu_a', x: 64, y: 96, width: 160, height: 128,
+          properties: [
+            { name: 'count', type: 'int', value: 4 },
+            { name: 'monsterId', type: 'string', value: 'bobolu' },
+          ],
+        }],
+      }],
+    };
+    expect(findMonsterSpawns(map)).toEqual([
+      { name: 'bobolu_a', x: 2, y: 3, width: 5, height: 4, monsterId: 'bobolu', count: 4 },
+    ]);
   });
 });

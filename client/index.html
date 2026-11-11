@@ -208,6 +208,154 @@
         color: #8fa399;
       }
 
+      .inv-item.usable {
+        cursor: pointer;
+        outline: 1px solid rgba(95, 174, 107, 0.6);
+      }
+      .inv-item.usable:hover {
+        background: rgba(95, 174, 107, 0.3);
+      }
+
+      /* 個人狀態與素質 */
+      #status {
+        position: fixed;
+        top: 62px;
+        left: 12px;
+        width: 210px;
+        z-index: 10;
+        color: #fff;
+        font-size: 13px;
+      }
+      .st-title {
+        margin-bottom: 4px;
+        text-shadow: 0 0 3px #000, 0 0 3px #000;
+      }
+      .st-bar {
+        position: relative;
+        height: 16px;
+        margin-bottom: 3px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+      }
+      .st-fill {
+        height: 100%;
+        width: 0;
+        transition: width 0.15s;
+      }
+      .st-hp .st-fill {
+        background: #d9534f;
+      }
+      .st-sp .st-fill {
+        background: #4f8fd9;
+      }
+      .st-exp .st-fill {
+        background: #d9b84f;
+      }
+      .st-bar span {
+        position: absolute;
+        inset: 0;
+        line-height: 16px;
+        text-align: center;
+        font-size: 11px;
+        text-shadow: 0 0 2px #000;
+      }
+      #status button {
+        border: 1px solid #47604f;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      #status button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .st-toggle {
+        margin-top: 3px;
+        padding: 4px 12px;
+      }
+      .st-toggle.has-points {
+        border-color: #ffd97a;
+        color: #ffd97a;
+      }
+      .st-stats {
+        margin-top: 6px;
+        padding: 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.65);
+      }
+      .st-points {
+        margin-bottom: 6px;
+        color: #ffd97a;
+      }
+      .st-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .st-row button {
+        padding: 2px 8px;
+      }
+      .st-derived {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        color: #c8d6ce;
+        font-size: 12px;
+        white-space: pre-line;
+      }
+
+      /* 技能列 */
+      #skills {
+        position: fixed;
+        left: 50%;
+        bottom: 12px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 6px;
+        z-index: 10;
+      }
+      #skills button {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 76px;
+        height: 54px;
+        border: 1px solid #6b8f76;
+        border-radius: 8px;
+        background: rgba(10, 20, 16, 0.8);
+        color: #fff;
+        font-family: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #skills button small {
+        color: #8fc0ff;
+        font-size: 11px;
+      }
+      #skills button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .sk-cd {
+        position: absolute;
+        top: 2px;
+        right: 5px;
+        color: #ffd97a;
+        font-size: 11px;
+      }
+      @media (max-width: 760px) {
+        #skills {
+          bottom: 210px;
+        }
+      }
+
       /* 聊天視窗 */
       #chat {
         position: fixed;

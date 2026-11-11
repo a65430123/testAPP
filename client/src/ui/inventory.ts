@@ -2,7 +2,10 @@
 
 import { getItemDef, INVENTORY_SIZE, type InventoryMessage } from '@starmemory/shared';
 
+export type ItemUseHandler = (slot: number) => void;
+
 export class InventoryPanel {
+  private useHandler: ItemUseHandler | null = null;
   private readonly root: HTMLDivElement;
   private readonly toggle: HTMLButtonElement;
   private readonly body: HTMLDivElement;
@@ -29,6 +32,11 @@ export class InventoryPanel {
     this.update({ items: [], coins: 0 });
   }
 
+  /** 設定點擊消耗品時要呼叫的函式（切換地圖後會換成新房間的） */
+  onUse(handler: ItemUseHandler | null): void {
+    this.useHandler = handler;
+  }
+
   /** 以伺服器傳來的內容重畫背包 */
   update(message: InventoryMessage): void {
     this.coins.textContent = `星幣 ${message.coins.toLocaleString()}　${message.items.length}/${INVENTORY_SIZE} 格`;
@@ -38,6 +46,12 @@ export class InventoryPanel {
       const cell = document.createElement('div');
       cell.className = 'inv-item';
       cell.title = def?.description ?? '';
+      // 消耗品可以點擊使用
+      if (def?.type === 'consumable') {
+        cell.classList.add('usable');
+        cell.title = `${def.description}（點擊使用）`;
+        cell.addEventListener('click', () => this.useHandler?.(item.slot));
+      }
       const name = document.createElement('span');
       name.textContent = def?.name ?? item.itemId;
       const quantity = document.createElement('span');

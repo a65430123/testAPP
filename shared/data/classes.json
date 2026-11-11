@@ -1,80 +1,8 @@
 [
-  {
-    "id": "bladeguard",
-    "name": "劍衛",
-    "description": "近戰坦克與物理輸出，皮厚耐打。",
-    "hpCoef": 30,
-    "spCoef": 4,
-    "startItems": [
-      { "itemId": "potion_hp_s", "quantity": 10 },
-      { "itemId": "potion_sp_s", "quantity": 3 },
-      { "itemId": "feather_return", "quantity": 2 },
-      { "itemId": "novice_sword", "quantity": 1 }
-    ]
-  },
-  {
-    "id": "starcaller",
-    "name": "星術士",
-    "description": "遠程魔法輸出，擅長屬性攻擊。",
-    "hpCoef": 14,
-    "spCoef": 12,
-    "startItems": [
-      { "itemId": "potion_hp_s", "quantity": 6 },
-      { "itemId": "potion_sp_s", "quantity": 8 },
-      { "itemId": "feather_return", "quantity": 2 },
-      { "itemId": "novice_staff", "quantity": 1 }
-    ]
-  },
-  {
-    "id": "trailhunter",
-    "name": "遊獵者",
-    "description": "遠程物理輸出，命中與射程出色。",
-    "hpCoef": 20,
-    "spCoef": 6,
-    "startItems": [
-      { "itemId": "potion_hp_s", "quantity": 8 },
-      { "itemId": "potion_sp_s", "quantity": 4 },
-      { "itemId": "feather_return", "quantity": 2 },
-      { "itemId": "novice_bow", "quantity": 1 }
-    ]
-  },
-  {
-    "id": "shadestep",
-    "name": "影行者",
-    "description": "高迴避與暴擊的刺客。",
-    "hpCoef": 22,
-    "spCoef": 6,
-    "startItems": [
-      { "itemId": "potion_hp_s", "quantity": 8 },
-      { "itemId": "potion_sp_s", "quantity": 4 },
-      { "itemId": "feather_return", "quantity": 2 },
-      { "itemId": "novice_dagger", "quantity": 1 }
-    ]
-  },
-  {
-    "id": "lightprayer",
-    "name": "祈光士",
-    "description": "治療與輔助，隊伍的後盾。",
-    "hpCoef": 18,
-    "spCoef": 10,
-    "startItems": [
-      { "itemId": "potion_hp_s", "quantity": 6 },
-      { "itemId": "potion_sp_s", "quantity": 8 },
-      { "itemId": "feather_return", "quantity": 2 },
-      { "itemId": "novice_mace", "quantity": 1 }
-    ]
-  },
-  {
-    "id": "tinkerer",
-    "name": "匠商",
-    "description": "擅長經濟與製造，負重驚人。",
-    "hpCoef": 26,
-    "spCoef": 5,
-    "startItems": [
-      { "itemId": "potion_hp_s", "quantity": 10 },
-      { "itemId": "potion_sp_s", "quantity": 3 },
-      { "itemId": "feather_return", "quantity": 3 },
-      { "itemId": "novice_axe", "quantity": 1 }
-    ]
-  }
+  {"id": "bladeguard", "name": "劍衛", "description": "近戰坦克與物理輸出，皮厚耐打。", "hpCoef": 30, "spCoef": 4, "attackType": "melee", "attackRange": 1.5, "weaponAtk": 12, "attackIntervalMs": 750, "sizeModifier": {"small": 0.85, "medium": 1, "large": 0.85}, "skills": ["heavy_slash"], "startItems": [{"itemId": "potion_hp_s", "quantity": 10}, {"itemId": "potion_sp_s", "quantity": 3}, {"itemId": "feather_return", "quantity": 2}, {"itemId": "novice_sword", "quantity": 1}]},
+  {"id": "starcaller", "name": "星術士", "description": "遠程魔法輸出，擅長屬性攻擊。", "hpCoef": 14, "spCoef": 12, "attackType": "magic", "attackRange": 5, "weaponAtk": 12, "attackIntervalMs": 900, "sizeModifier": {"small": 1, "medium": 1, "large": 1}, "skills": ["spark_bolt", "tide_surge"], "startItems": [{"itemId": "potion_hp_s", "quantity": 6}, {"itemId": "potion_sp_s", "quantity": 8}, {"itemId": "feather_return", "quantity": 2}, {"itemId": "novice_staff", "quantity": 1}]},
+  {"id": "trailhunter", "name": "遊獵者", "description": "遠程物理輸出，命中與射程出色。", "hpCoef": 20, "spCoef": 6, "attackType": "ranged", "attackRange": 6, "weaponAtk": 11, "attackIntervalMs": 800, "sizeModifier": {"small": 1, "medium": 1, "large": 0.85}, "skills": ["double_shot", "arrow_rain"], "startItems": [{"itemId": "potion_hp_s", "quantity": 8}, {"itemId": "potion_sp_s", "quantity": 4}, {"itemId": "feather_return", "quantity": 2}, {"itemId": "novice_bow", "quantity": 1}]},
+  {"id": "shadestep", "name": "影行者", "description": "高迴避與暴擊的刺客。", "hpCoef": 22, "spCoef": 6, "attackType": "melee", "attackRange": 1.5, "weaponAtk": 10, "attackIntervalMs": 600, "sizeModifier": {"small": 1, "medium": 0.85, "large": 0.7}, "skills": ["backstab"], "startItems": [{"itemId": "potion_hp_s", "quantity": 8}, {"itemId": "potion_sp_s", "quantity": 4}, {"itemId": "feather_return", "quantity": 2}, {"itemId": "novice_dagger", "quantity": 1}]},
+  {"id": "lightprayer", "name": "祈光士", "description": "治療與輔助，隊伍的後盾。", "hpCoef": 18, "spCoef": 10, "attackType": "melee", "attackRange": 1.5, "weaponAtk": 10, "attackIntervalMs": 850, "sizeModifier": {"small": 0.85, "medium": 1, "large": 0.85}, "skills": ["mending_light", "radiant_arrow"], "startItems": [{"itemId": "potion_hp_s", "quantity": 6}, {"itemId": "potion_sp_s", "quantity": 8}, {"itemId": "feather_return", "quantity": 2}, {"itemId": "novice_mace", "quantity": 1}]},
+  {"id": "tinkerer", "name": "匠商", "description": "擅長經濟與製造，負重驚人。", "hpCoef": 26, "spCoef": 5, "attackType": "melee", "attackRange": 1.5, "weaponAtk": 13, "attackIntervalMs": 1000, "sizeModifier": {"small": 0.7, "medium": 0.85, "large": 1}, "skills": ["cart_ram"], "startItems": [{"itemId": "potion_hp_s", "quantity": 10}, {"itemId": "potion_sp_s", "quantity": 3}, {"itemId": "feather_return", "quantity": 3}, {"itemId": "novice_axe", "quantity": 1}]}
 ]

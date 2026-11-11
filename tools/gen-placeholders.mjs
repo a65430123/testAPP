@@ -328,6 +328,67 @@ function drawPlayerSheet() {
   return img;
 }
 
+// ---------------------------------------------------------------- 魔物佔位圖（每格 48×48，腳底在 y=42）
+// 格子順序對應 shared/data/monsters.json 的 sprite 欄位
+
+const MONSTER_SIZE = 48;
+
+function drawMonsterSheet() {
+  const img = new Image(MONSTER_SIZE * 3, MONSTER_SIZE);
+  const shadow = [20, 30, 40, 80];
+  const eye = [30, 34, 50];
+
+  // 0：啵啵露（水滴）
+  {
+    const ox = 0;
+    img.fillEllipse(ox + 24, 42, 13, 4, shadow);
+    img.fillPolygon([[ox + 24, 8], [ox + 34, 26], [ox + 14, 26]], [110, 190, 240]);
+    img.fillEllipse(ox + 24, 30, 13, 12, [110, 190, 240]);
+    img.fillEllipse(ox + 19, 25, 4, 5, [190, 232, 255]);
+    img.fillRect(ox + 19, 31, 2, 4, eye);
+    img.fillRect(ox + 27, 31, 2, 4, eye);
+  }
+  // 1：絨尾兔
+  {
+    const ox = MONSTER_SIZE;
+    img.fillEllipse(ox + 24, 42, 13, 4, shadow);
+    img.fillEllipse(ox + 18, 12, 3, 9, [250, 244, 236]);
+    img.fillEllipse(ox + 28, 12, 3, 9, [250, 244, 236]);
+    img.fillEllipse(ox + 18, 13, 1.5, 6, [246, 180, 190]);
+    img.fillEllipse(ox + 28, 13, 1.5, 6, [246, 180, 190]);
+    img.fillEllipse(ox + 24, 32, 12, 11, [250, 244, 236]);
+    img.fillEllipse(ox + 36, 36, 5, 5, [255, 255, 255]);
+    img.fillRect(ox + 19, 28, 2, 3, eye);
+    img.fillRect(ox + 27, 28, 2, 3, eye);
+    img.fillRect(ox + 23, 33, 2, 2, [240, 150, 160]);
+  }
+  // 2：芽芽菇
+  {
+    const ox = MONSTER_SIZE * 2;
+    img.fillEllipse(ox + 24, 42, 13, 4, shadow);
+    img.fillRect(ox + 18, 26, 12, 16, [244, 232, 208]);
+    img.fillEllipse(ox + 24, 20, 17, 12, [214, 84, 74]);
+    img.fillRect(ox + 7, 22, 34, 6, [214, 84, 74]);
+    img.fillEllipse(ox + 16, 16, 3, 3, [255, 240, 230]);
+    img.fillEllipse(ox + 30, 13, 4, 3, [255, 240, 230]);
+    img.fillEllipse(ox + 24, 6, 2, 4, [112, 190, 110]);
+    img.fillRect(ox + 20, 31, 2, 3, eye);
+    img.fillRect(ox + 26, 31, 2, 3, eye);
+  }
+  return img;
+}
+
+/** 掉落物圖示（24×24 的小袋子） */
+function drawDropIcon() {
+  const img = new Image(24, 24);
+  img.fillEllipse(12, 21, 8, 2.5, [20, 30, 40, 80]);
+  img.fillEllipse(12, 15, 8, 7, [196, 150, 92]);
+  img.fillRect(9, 6, 6, 4, [196, 150, 92]);
+  img.fillRect(8, 9, 8, 2, [120, 80, 50]);
+  img.fillEllipse(9, 13, 2, 3, [226, 188, 134]);
+  return img;
+}
+
 // ---------------------------------------------------------------- 示範地圖
 
 const GID = {
@@ -336,7 +397,7 @@ const GID = {
 };
 
 /** 把地面／物件陣列、出生點與傳送點組成 Tiled JSON */
-function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn, portals }) {
+function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn, portals, monsterSpawns = [] }) {
   let nextObjectId = 1;
   return {
     compressionlevel: -1,
@@ -350,8 +411,8 @@ function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn,
     type: 'map',
     tilewidth: TILE_W,
     tileheight: TILE_H,
-    nextlayerid: 5,
-    nextobjectid: 2 + portals.length,
+    nextlayerid: 6,
+    nextobjectid: 2 + portals.length + monsterSpawns.length,
     properties: [
       { name: 'displayName', type: 'string', value: displayName },
       { name: 'mapId', type: 'string', value: mapId },
@@ -407,6 +468,31 @@ function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn,
             { name: 'targetMap', type: 'string', value: p.targetMap },
             { name: 'targetX', type: 'int', value: p.targetX },
             { name: 'targetY', type: 'int', value: p.targetY },
+          ],
+        })),
+      },
+      {
+        id: 5,
+        name: 'monster_spawns',
+        type: 'objectgroup',
+        draworder: 'topdown',
+        x: 0,
+        y: 0,
+        opacity: 1,
+        visible: true,
+        objects: monsterSpawns.map((m) => ({
+          id: nextObjectId++,
+          name: m.name,
+          type: 'monster_spawn',
+          rotation: 0,
+          visible: true,
+          x: m.x * TILE_H,
+          y: m.y * TILE_H,
+          width: m.width * TILE_H,
+          height: m.height * TILE_H,
+          properties: [
+            { name: 'count', type: 'int', value: m.count },
+            { name: 'monsterId', type: 'string', value: m.monsterId },
           ],
         })),
       },
@@ -510,6 +596,13 @@ function buildF01() {
     props,
     spawn,
     portals: [{ name: 'to_C01', x: 20, y: 1, width: 2, height: 1, targetMap: 'C01', targetX: 14, targetY: 26 }],
+    // 入口附近與西南是被動的低等魔物，東側道路一帶有會主動攻擊的芽芽菇
+    monsterSpawns: [
+      { name: 'bobolu_north', monsterId: 'bobolu', count: 6, x: 2, y: 2, width: 16, height: 14 },
+      { name: 'bobolu_southwest', monsterId: 'bobolu', count: 8, x: 3, y: 23, width: 15, height: 14 },
+      { name: 'fluffytail_southeast', monsterId: 'fluffytail', count: 7, x: 23, y: 24, width: 14, height: 13 },
+      { name: 'sproutcap_east', monsterId: 'sproutcap', count: 5, x: 27, y: 15, width: 11, height: 7 },
+    ],
   });
 }
 
@@ -573,6 +666,8 @@ function buildC01() {
 writePng(resolve(TILESET_DIR, 'ground.png'), drawGroundTileset());
 writePng(resolve(TILESET_DIR, 'props.png'), drawPropsTileset());
 writePng(resolve(SPRITE_DIR, 'player.png'), drawPlayerSheet());
+writePng(resolve(SPRITE_DIR, 'monsters.png'), drawMonsterSheet());
+writePng(resolve(SPRITE_DIR, 'drop.png'), drawDropIcon());
 
 const MAPS = [
   { file: 'f01_sprout_meadow.json', build: buildF01 },

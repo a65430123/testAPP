@@ -250,3 +250,46 @@ export function portalAt(portals: readonly Portal[], tx: number, ty: number): Po
     (p) => tx + 0.5 >= p.x && tx + 0.5 < p.x + p.width && ty + 0.5 >= p.y && ty + 0.5 < p.y + p.height,
   );
 }
+
+/** 魔物重生區：在這個範圍內維持固定數量的某種魔物 */
+export interface MonsterSpawnArea {
+  name: string;
+  /** 範圍（格座標，左上角與寬高） */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** 對應 shared/data/monsters.json 的 id */
+  monsterId: string;
+  count: number;
+}
+
+/**
+ * 解析 monster_spawns 物件層。每個矩形物件需要兩個自訂屬性：
+ * monsterId（字串）、count（整數，這一區同時存在的數量）。
+ */
+export function findMonsterSpawns(map: TiledMap): MonsterSpawnArea[] {
+  const layer = getObjectLayer(map, MAP_LAYER.monsterSpawns);
+  if (!layer) {
+    return [];
+  }
+  const areas: MonsterSpawnArea[] = [];
+  for (const obj of layer.objects) {
+    const prop = (name: string): unknown => obj.properties?.find((p) => p.name === name)?.value;
+    const monsterId = prop('monsterId');
+    const count = prop('count');
+    if (typeof monsterId !== 'string' || typeof count !== 'number' || !Number.isInteger(count) || count < 1) {
+      throw new Error(`魔物重生區「${obj.name}」缺少 monsterId／count 屬性`);
+    }
+    areas.push({
+      name: obj.name,
+      x: obj.x / map.tileheight,
+      y: obj.y / map.tileheight,
+      width: Math.max(obj.width / map.tileheight, 1),
+      height: Math.max(obj.height / map.tileheight, 1),
+      monsterId,
+      count,
+    });
+  }
+  return areas;
+}

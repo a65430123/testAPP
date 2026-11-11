@@ -21,16 +21,40 @@ export interface PlayerView {
   level: number;
   x: number;
   y: number;
+  hp: number;
+  maxHp: number;
+}
+
+/** 魔物同步狀態（對應伺服器的 MonsterState） */
+export interface MonsterView {
+  monsterId: string;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+}
+
+/** 掉落物同步狀態（對應伺服器的 DropState） */
+export interface DropView {
+  itemId: string;
+  quantity: number;
+  x: number;
+  y: number;
+  owner: string;
+}
+
+interface StateCollection<T> {
+  size: number;
+  get(key: string): T | undefined;
+  forEach(callback: (value: T, key: string) => void): void;
 }
 
 /** 用戶端看到的地圖房間同步狀態（與伺服器的 MapState 對應） */
 export interface MapStateView {
   mapId: string;
-  players: {
-    size: number;
-    get(sessionId: string): PlayerView | undefined;
-    forEach(callback: (player: PlayerView, sessionId: string) => void): void;
-  };
+  players: StateCollection<PlayerView>;
+  monsters: StateCollection<MonsterView>;
+  drops: StateCollection<DropView>;
 }
 
 export type MapRoomConnection = Room<any, MapStateView>;
@@ -143,26 +167,36 @@ export async function joinMap(session: Session, mapId: string): Promise<MapRoomC
   return client.joinOrCreate<MapStateView>(ROOM_MAP, options);
 }
 
-/** 訂閱房間內玩家的加入、離開與狀態變動 */
-export interface PlayerCallbacks {
-  /** 有玩家加入（進房時已在房內的玩家也會各觸發一次） */
-  onAdd(handler: (player: PlayerView, sessionId: string) => void): void;
-  onRemove(handler: (player: PlayerView, sessionId: string) => void): void;
-  /** 指定玩家的任何欄位有變動（每次同步最多觸發一次） */
-  onChange(player: PlayerView, handler: () => void): void;
+/** 訂閱同步狀態中某個集合（玩家、魔物、掉落物）的加入、離開與變動 */
+export interface CollectionCallbacks<T> {
+  /** 有項目加入（進房時已存在的項目也會各觸發一次） */
+  onAdd(handler: (item: T, key: string) => void): void;
+  onRemove(handler: (item: T, key: string) => void): void;
+  /** 指定項目的任何欄位有變動（每次同步最多觸發一次） */
+  onChange(item: T, handler: () => void): void;
 }
 
+type CollectionName = 'players' | 'monsters' | 'drops';
+type CollectionItem<N extends CollectionName> = N extends 'players'
+  ? PlayerView
+  : N extends 'monsters'
+    ? MonsterView
+    : DropView;
+
 /**
- * 取得玩家狀態的回呼介面。
+ * 取得同步狀態的回呼介面。
  * 用戶端沒有伺服器的 schema 類別（狀態結構是連線時由伺服器告知的），
  * 所以 Colyseus 的回呼 API 在這裡沒有型別資訊；把缺少型別的部分集中包在這個函式裡。
  */
-export function playerCallbacks(room: MapRoomConnection): PlayerCallbacks {
+export function stateCallbacks<N extends CollectionName>(
+  room: MapRoomConnection,
+  collection: N,
+): CollectionCallbacks<CollectionItem<N>> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const callbacks = Callbacks.get(room as any) as any;
   return {
-    onAdd: (handler) => void callbacks.onAdd('players', handler),
-    onRemove: (handler) => void callbacks.onRemove('players', handler),
-    onChange: (player, handler) => void callbacks.onChange(player, handler),
+    onAdd: (handler) => void callbacks.onAdd(collection, handler),
+    onRemove: (handler) => void callbacks.onRemove(collection, handler),
+    onChange: (item, handler) => void callbacks.onChange(item, handler),
   };
 }

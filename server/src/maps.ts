@@ -4,12 +4,15 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   buildCollisionGrid,
+  findMonsterSpawns,
   findPortals,
   findSpawn,
   getMapProperty,
+  getMonsterDef,
   isWalkable,
   SPAWN_PLAYER,
   type CollisionGrid,
+  type MonsterSpawnArea,
   type Point,
   type Portal,
   type TiledMap,
@@ -20,6 +23,7 @@ export interface GameMap {
   displayName: string;
   grid: CollisionGrid;
   portals: Portal[];
+  monsterSpawns: MonsterSpawnArea[];
   /** 預設出生點（格座標，浮點數，位於格子中心） */
   spawn: Point;
 }
@@ -46,8 +50,17 @@ function loadMaps(): Map<string, GameMap> {
       displayName: getMapProperty(tiled, 'displayName') ?? id,
       grid: buildCollisionGrid(tiled),
       portals: findPortals(tiled),
+      monsterSpawns: findMonsterSpawns(tiled),
       spawn,
     });
+  }
+  // 檢查重生區的魔物都存在於資料表
+  for (const map of maps.values()) {
+    for (const area of map.monsterSpawns) {
+      if (!getMonsterDef(area.monsterId)) {
+        throw new Error(`地圖 ${map.id} 的重生區「${area.name}」指定了不存在的魔物 ${area.monsterId}`);
+      }
+    }
   }
   // 檢查每個傳送點的目的地都存在且可以站立，避免玩家被送進牆裡
   for (const map of maps.values()) {

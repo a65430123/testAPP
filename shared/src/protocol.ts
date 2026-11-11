@@ -1,6 +1,6 @@
 // 用戶端與伺服器之間的通訊協定：房間名稱、訊息代號、訊息內容型別與共用的驗證規則
 
-import type { InventoryItem } from './character';
+import type { InventoryItem, Stats } from './character';
 
 /** Colyseus 房間類型名稱：每張地圖一個房間，以 mapId 區分 */
 export const ROOM_MAP = 'map';
@@ -23,6 +23,19 @@ export const CHAT_MIN_INTERVAL_MS = 800;
 
 /** 定時存檔間隔（毫秒）：有變動的角色每隔這麼久寫入資料庫一次 */
 export const AUTOSAVE_INTERVAL_MS = 30_000;
+
+/** 撿取掉落物的最大距離（格） */
+export const PICKUP_RANGE = 2;
+/** 掉落物只有歸屬者能撿的保護時間，以及無人撿取時的消失時間（毫秒） */
+export const DROP_OWNER_MS = 10_000;
+export const DROP_LIFETIME_MS = 60_000;
+/** 玩家被擊倒後多久自動復活（毫秒） */
+export const REVIVE_DELAY_MS = 5_000;
+/** HP／SP 自然回復的間隔（毫秒） */
+export const REGEN_INTERVAL_MS = 6_000;
+/** 死亡懲罰：損失「升到下一級所需經驗」的這個比例；低於指定等級不罰 */
+export const DEATH_EXP_PENALTY = 0.01;
+export const DEATH_PENALTY_MIN_LEVEL = 11;
 
 /** 帳號與密碼長度限制（bcrypt 只會使用密碼的前 72 個位元組） */
 export const USERNAME_MIN_LENGTH = 3;
@@ -52,6 +65,20 @@ export const MSG = {
    * 伺服器 → 用戶端（只傳給本人）：背包內容與星幣
    */
   inventory: 'inventory',
+  /** 用戶端 → 伺服器：指定攻擊目標（伺服器會自動追擊並持續普攻） */
+  attack: 'attack',
+  /** 用戶端 → 伺服器：施放技能 */
+  skill: 'skill',
+  /** 用戶端 → 伺服器：撿取掉落物 */
+  pickup: 'pickup',
+  /** 用戶端 → 伺服器：使用背包中的消耗品 */
+  useItem: 'useItem',
+  /** 用戶端 → 伺服器：把一項素質加 1 */
+  allocStat: 'allocStat',
+  /** 伺服器 → 用戶端（只傳給本人）：等級、經驗、HP／SP、素質等個人數值 */
+  self: 'self',
+  /** 伺服器 → 用戶端：戰鬥事件（傷害、未命中、治療），用來顯示數字 */
+  combat: 'combat',
   /** 伺服器 → 用戶端：踩到傳送點，請改連另一張地圖的房間 */
   transfer: 'transfer',
 } as const;
@@ -149,6 +176,54 @@ export interface JoinMapOptions {
   token: string;
   characterId: number;
   mapId: string;
+}
+
+export interface AttackRequest {
+  /** 魔物在房間狀態中的鍵 */
+  targetId: string;
+}
+
+export interface SkillRequest {
+  skillId: string;
+  /** 傷害技能的目標魔物；對自己施放的技能不需要 */
+  targetId?: string;
+}
+
+export interface PickupRequest {
+  dropId: string;
+}
+
+export interface UseItemRequest {
+  /** 背包格子位置 */
+  slot: number;
+}
+
+export interface AllocStatRequest {
+  stat: keyof Stats;
+}
+
+/** 個人數值（只傳給本人） */
+export interface SelfMessage {
+  level: number;
+  exp: number;
+  expNext: number;
+  hp: number;
+  maxHp: number;
+  sp: number;
+  maxSp: number;
+  statPoints: number;
+  stats: Stats;
+}
+
+/** 戰鬥事件。sourceId／targetId 是玩家的連線代號或魔物的鍵。 */
+export interface CombatEvent {
+  type: 'damage' | 'miss' | 'heal';
+  sourceId: string;
+  targetId: string;
+  amount: number;
+  crit: boolean;
+  /** 由技能造成時附上技能代號 */
+  skillId?: string;
 }
 
 /** 背包同步訊息 */

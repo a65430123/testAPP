@@ -1,0 +1,11 @@
+[
+  {"id": "heavy_slash", "name": "重斬", "type": "damage", "kind": "physical", "element": "weapon", "power": 1.8, "hits": 1, "range": 1.5, "radius": 0, "spCost": 6, "cooldownMs": 3000, "requiredLevel": 1, "description": "對單一目標造成 180% 物理傷害。"},
+  {"id": "spark_bolt", "name": "星火彈", "type": "damage", "kind": "magical", "element": "flame", "power": 1.6, "hits": 1, "range": 7, "radius": 0, "spCost": 8, "cooldownMs": 2500, "requiredLevel": 1, "description": "對單一目標造成 160% 焰屬性魔法傷害。"},
+  {"id": "tide_surge", "name": "潮湧", "type": "damage", "kind": "magical", "element": "tide", "power": 1.2, "hits": 1, "range": 6, "radius": 2, "spCost": 14, "cooldownMs": 6000, "requiredLevel": 3, "description": "對目標與周圍 2 格內的敵人造成 120% 潮屬性魔法傷害。"},
+  {"id": "double_shot", "name": "二連射", "type": "damage", "kind": "physical", "element": "weapon", "power": 1.0, "hits": 2, "range": 6, "radius": 0, "spCost": 7, "cooldownMs": 3000, "requiredLevel": 1, "description": "連續射出兩箭，各造成 100% 物理傷害。"},
+  {"id": "arrow_rain", "name": "箭雨", "type": "damage", "kind": "physical", "element": "weapon", "power": 1.1, "hits": 1, "range": 6, "radius": 2, "spCost": 14, "cooldownMs": 6000, "requiredLevel": 3, "description": "對目標與周圍 2 格內的敵人造成 110% 物理傷害。"},
+  {"id": "backstab", "name": "背刺", "type": "damage", "kind": "physical", "element": "weapon", "power": 2.2, "hits": 1, "range": 1.5, "radius": 0, "spCost": 8, "cooldownMs": 4000, "requiredLevel": 1, "description": "對單一目標造成 220% 物理傷害。"},
+  {"id": "mending_light", "name": "癒光", "type": "heal", "kind": "magical", "element": "radiant", "power": 1.5, "hits": 1, "range": 0, "radius": 0, "spCost": 10, "cooldownMs": 4000, "requiredLevel": 1, "description": "回復自己 HP，回復量為魔攻的 150%。"},
+  {"id": "radiant_arrow", "name": "輝矢", "type": "damage", "kind": "magical", "element": "radiant", "power": 1.4, "hits": 1, "range": 6, "radius": 0, "spCost": 7, "cooldownMs": 2500, "requiredLevel": 1, "description": "對單一目標造成 140% 輝屬性魔法傷害。"},
+  {"id": "cart_ram", "name": "推車衝撞", "type": "damage", "kind": "physical", "element": "weapon", "power": 1.5, "hits": 1, "range": 1.5, "radius": 0, "spCost": 6, "cooldownMs": 3000, "requiredLevel": 1, "description": "對單一目標造成 150% 物理傷害。"}
+]
