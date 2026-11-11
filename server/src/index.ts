@@ -1,36 +1,59 @@
-// 伺服器佔位程式（本階段不連線）。
-// 目的：確認 server 能匯入 shared，並用同一份地圖資料與尋路邏輯算出與用戶端相同的結果。
-// Colyseus 房間、移動驗證會在後續階段加入。
+// 伺服器進入點：HTTP 登入 API + Colyseus 地圖房間
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import express from 'express';
+import { Server } from 'colyseus';
 import {
-  buildCollisionGrid,
-  findPath,
-  findSpawn,
-  SPAWN_PLAYER,
-  type TiledMap,
+  DEFAULT_SERVER_PORT,
+  ROOM_MAP,
+  validateName,
+  type ErrorResponse,
+  type LoginResponse,
 } from '@starmemory/shared';
+import { login } from './accounts';
+import { allMaps } from './maps';
+import { MapRoom } from './rooms/MapRoom';
 
-const mapUrl = new URL('../../shared/maps/f01_sprout_meadow.json', import.meta.url);
-const map = JSON.parse(readFileSync(fileURLToPath(mapUrl), 'utf-8')) as TiledMap;
+const port = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
+/** 允許呼叫登入 API 的網頁來源；正式環境請設成遊戲網址 */
+const corsOrigin = process.env.CORS_ORIGIN ?? '*';
 
-const grid = buildCollisionGrid(map);
-const blockedCount = grid.blocked.reduce((sum, v) => sum + v, 0);
-const spawn = findSpawn(map, SPAWN_PLAYER);
-if (!spawn) {
-  throw new Error('地圖缺少玩家出生點');
-}
+const gameServer = new Server({
+  greet: false,
+  express: (app) => {
+    // 用戶端開發伺服器（5173 埠）與遊戲伺服器不同來源，登入 API 需要 CORS 標頭
+    app.use('/api', (req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      if (req.method === 'OPTIONS') {
+        res.sendStatus(204);
+        return;
+      }
+      next();
+    });
 
-const start = { x: Math.floor(spawn.x), y: Math.floor(spawn.y) };
-const goal = { x: 5, y: 30 };
-const path = findPath(grid, start, goal);
+    app.post('/api/login', express.json({ limit: '1kb' }), (req, res) => {
+      const name: unknown = (req.body as { name?: unknown } | undefined)?.name;
+      const error = validateName(name);
+      if (error) {
+        const body: ErrorResponse = { error };
+        res.status(400).json(body);
+        return;
+      }
+      const account = login((name as string).trim());
+      const body: LoginResponse = { token: account.token, name: account.name, mapId: account.mapId };
+      res.json(body);
+    });
 
-console.log(`[server] 地圖 F01 載入完成：${grid.width}×${grid.height}，不可行走格數 ${blockedCount}`);
-console.log(`[server] 出生點格座標 (${start.x}, ${start.y})`);
-console.log(
-  path
-    ? `[server] 從出生點到 (${goal.x}, ${goal.y}) 的路徑共 ${path.length} 步`
-    : `[server] 從出生點無法到達 (${goal.x}, ${goal.y})`,
-);
-console.log('[server] 本階段尚未啟動網路服務。');
+    app.get('/api/health', (_req, res) => {
+      res.json({ ok: true });
+    });
+  },
+});
+
+// 每張地圖一個房間：以 mapId 區分，同一張地圖的玩家會進到同一個房間（滿了才開新的分流）
+gameServer.define(ROOM_MAP, MapRoom).filterBy(['mapId']);
+
+await gameServer.listen(port);
+console.log(`[server] 已啟動，連接埠 ${port}`);
+console.log(`[server] 已載入地圖：${allMaps().map((m) => `${m.id} ${m.displayName}`).join('、')}`);

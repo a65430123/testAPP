@@ -5,12 +5,19 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "smoke": "tsx scripts/smoke.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@starmemory/shared": "*"
+    "@colyseus/schema": "^5.0.46",
+    "@starmemory/shared": "*",
+    "colyseus": "^0.18.12",
+    "express": "^5.3.0"
   },
   "devDependencies": {
+    "@colyseus/sdk": "^0.18.10",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "tsx": "^4.20.0",
     "typescript": "~5.9.0"

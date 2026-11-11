@@ -1,7 +1,7 @@
 // 產生佔位美術（PNG）與示範地圖（Tiled JSON）。不需要任何第三方套件。
 //
 // 用法：
-//   node tools/gen-placeholders.mjs              只重新產生 PNG；地圖檔不存在時才產生地圖
+//   node tools/gen-placeholders.mjs              只重新產生 PNG；地圖檔不存在時才產生該地圖
 //   node tools/gen-placeholders.mjs --force-map  連地圖也重新產生（會覆蓋你在 Tiled 裡的修改）
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ import { deflateSync } from 'node:zlib';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TILESET_DIR = resolve(ROOT, 'client/public/assets/tilesets');
 const SPRITE_DIR = resolve(ROOT, 'client/public/assets/sprites');
-const MAP_PATH = resolve(ROOT, 'shared/maps/f01_sprout_meadow.json');
+const MAP_DIR = resolve(ROOT, 'shared/maps');
 
 const TILE_W = 64;
 const TILE_H = 32;
@@ -161,9 +161,9 @@ function writePng(path, img) {
   console.log(`已產生 ${path}（${img.width}×${img.height}）`);
 }
 
-// ---------------------------------------------------------------- 地面圖磚集（6 格，每格 64×32 菱形）
+// ---------------------------------------------------------------- 地面圖磚集（7 格，每格 64×32 菱形）
 
-const GROUND_TILES = ['grass_a', 'grass_b', 'grass_flower', 'dirt', 'sand', 'water'];
+const GROUND_TILES = ['grass_a', 'grass_b', 'grass_flower', 'dirt', 'sand', 'water', 'stone'];
 
 function drawGroundTileset() {
   const img = new Image(TILE_W * GROUND_TILES.length, TILE_H);
@@ -175,6 +175,7 @@ function drawGroundTileset() {
     dirt: [188, 150, 104],
     sand: [232, 214, 160],
     water: [86, 156, 222],
+    stone: [186, 190, 198],
   };
   const speck = {
     grass_a: [[92, 166, 80], [140, 208, 112]],
@@ -183,6 +184,7 @@ function drawGroundTileset() {
     dirt: [[166, 128, 86], [204, 170, 124]],
     sand: [[214, 194, 140], [244, 230, 184]],
     water: [[70, 138, 206], [120, 184, 238]],
+    stone: [[166, 170, 180], [204, 208, 214]],
   };
 
   GROUND_TILES.forEach((name, index) => {
@@ -225,9 +227,9 @@ function drawGroundTileset() {
   return img;
 }
 
-// ---------------------------------------------------------------- 物件圖磚集（3 格，每格 64×96，底部對齊地面菱形）
+// ---------------------------------------------------------------- 物件圖磚集（5 格，每格 64×96，底部對齊地面菱形）
 
-const PROP_TILES = ['tree', 'rock', 'bush'];
+const PROP_TILES = ['tree', 'rock', 'bush', 'house', 'crate'];
 
 function drawPropsTileset() {
   const img = new Image(TILE_W * PROP_TILES.length, PROP_H);
@@ -262,6 +264,24 @@ function drawPropsTileset() {
     for (const [bx, by] of [[26, 68], [36, 62], [42, 72], [30, 76]]) {
       img.fillEllipse(ox + bx, by, 2, 2, [222, 78, 96]);
     }
+  }
+  // 小屋（佔滿一格：兩面牆 + 四角錐屋頂）
+  {
+    const ox = TILE_W * 3;
+    img.fillPolygon([[ox, 80], [ox + 32, 96], [ox + 32, 68], [ox, 52]], [214, 196, 160]);
+    img.fillPolygon([[ox + 32, 96], [ox + 64, 80], [ox + 64, 52], [ox + 32, 68]], [238, 222, 188]);
+    img.fillPolygon([[ox + 10, 71], [ox + 20, 76], [ox + 20, 66], [ox + 10, 61]], [150, 204, 232]);
+    img.fillPolygon([[ox + 42, 91], [ox + 52, 86], [ox + 52, 70], [ox + 42, 75]], [124, 84, 52]);
+    img.fillPolygon([[ox, 52], [ox + 32, 68], [ox + 32, 14]], [178, 74, 66]);
+    img.fillPolygon([[ox + 32, 68], [ox + 64, 52], [ox + 32, 14]], [212, 96, 82]);
+  }
+  // 木箱
+  {
+    const ox = TILE_W * 4;
+    img.fillEllipse(ox + 32, groundY + 4, 22, 8, shadow);
+    img.fillPolygon([[ox + 16, 68], [ox + 32, 76], [ox + 32, 92], [ox + 16, 84]], [150, 108, 66]);
+    img.fillPolygon([[ox + 32, 76], [ox + 48, 68], [ox + 48, 84], [ox + 32, 92]], [176, 130, 82]);
+    img.fillPolygon([[ox + 32, 60], [ox + 48, 68], [ox + 32, 76], [ox + 16, 68]], [204, 160, 106]);
   }
   return img;
 }
@@ -308,71 +328,20 @@ function drawPlayerSheet() {
   return img;
 }
 
-// ---------------------------------------------------------------- 示範地圖：F01 嫩芽草原（40×40）
+// ---------------------------------------------------------------- 示範地圖
 
-function buildMap() {
-  const W = 40;
-  const H = 40;
-  const rand = mulberry32(20261111);
-  const GID = { grassA: 1, grassB: 2, grassFlower: 3, dirt: 4, sand: 5, water: 6, tree: 7, rock: 8, bush: 9 };
-  const spawn = { x: 20, y: 20 };
+const GID = {
+  grassA: 1, grassB: 2, grassFlower: 3, dirt: 4, sand: 5, water: 6, stone: 7,
+  tree: 8, rock: 9, bush: 10, house: 11, crate: 12,
+};
 
-  const ground = new Array(W * H).fill(0);
-  const props = new Array(W * H).fill(0);
-  const idx = (x, y) => y * W + x;
-
-  // 1. 草地
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const r = rand();
-      ground[idx(x, y)] = r < 0.08 ? GID.grassFlower : r < 0.54 ? GID.grassA : GID.grassB;
-    }
-  }
-  // 2. 東西向蜿蜒小路與通往北邊的小路
-  for (let x = 2; x <= 37; x++) {
-    const y = Math.round(20 + 4 * Math.sin(x / 5));
-    ground[idx(x, y)] = GID.dirt;
-    ground[idx(x, y + 1)] = GID.dirt;
-  }
-  for (let y = 2; y <= 20; y++) {
-    ground[idx(20, y)] = GID.dirt;
-    ground[idx(21, y)] = GID.dirt;
-  }
-  // 3. 池塘（水面不可行走）與沙岸
-  const pond = { x: 30, y: 9 };
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const d = Math.hypot(x - pond.x, (y - pond.y) * 1.15);
-      if (d <= 3.6) ground[idx(x, y)] = GID.water;
-      else if (d <= 5) ground[idx(x, y)] = GID.sand;
-    }
-  }
-  // 4. 物件：外圈樹牆、小樹林、零星的樹／石頭／灌木
-  const isGrass = (x, y) => ground[idx(x, y)] <= GID.grassFlower;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const border = x === 0 || y === 0 || x === W - 1 || y === H - 1;
-      if (border) {
-        ground[idx(x, y)] = GID.grassB;
-        props[idx(x, y)] = GID.tree;
-        continue;
-      }
-      if (!isGrass(x, y)) continue;
-      if (Math.hypot(x - spawn.x, y - spawn.y) < 3.5) continue;
-      const inGrove = x >= 7 && x <= 13 && y >= 7 && y <= 13;
-      const r = rand();
-      if (inGrove) {
-        if (r < 0.4) props[idx(x, y)] = GID.tree;
-      } else if (r < 0.05) props[idx(x, y)] = GID.tree;
-      else if (r < 0.07) props[idx(x, y)] = GID.rock;
-      else if (r < 0.1) props[idx(x, y)] = GID.bush;
-    }
-  }
-
+/** 把地面／物件陣列、出生點與傳送點組成 Tiled JSON */
+function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn, portals }) {
+  let nextObjectId = 1;
   return {
     compressionlevel: -1,
-    width: W,
-    height: H,
+    width,
+    height,
     infinite: false,
     orientation: 'isometric',
     renderorder: 'right-down',
@@ -381,15 +350,15 @@ function buildMap() {
     type: 'map',
     tilewidth: TILE_W,
     tileheight: TILE_H,
-    nextlayerid: 4,
-    nextobjectid: 2,
+    nextlayerid: 5,
+    nextobjectid: 2 + portals.length,
     properties: [
-      { name: 'mapId', type: 'string', value: 'F01' },
-      { name: 'displayName', type: 'string', value: '嫩芽草原' },
+      { name: 'displayName', type: 'string', value: displayName },
+      { name: 'mapId', type: 'string', value: mapId },
     ],
     layers: [
-      { id: 1, name: 'ground', type: 'tilelayer', width: W, height: H, x: 0, y: 0, opacity: 1, visible: true, data: ground },
-      { id: 2, name: 'props', type: 'tilelayer', width: W, height: H, x: 0, y: 0, opacity: 1, visible: true, data: props },
+      { id: 1, name: 'ground', type: 'tilelayer', width, height, x: 0, y: 0, opacity: 1, visible: true, data: ground },
+      { id: 2, name: 'props', type: 'tilelayer', width, height, x: 0, y: 0, opacity: 1, visible: true, data: props },
       {
         id: 3,
         name: 'spawns',
@@ -401,7 +370,7 @@ function buildMap() {
         visible: true,
         objects: [
           {
-            id: 1,
+            id: nextObjectId++,
             name: 'player_spawn',
             type: 'spawn',
             point: true,
@@ -414,6 +383,32 @@ function buildMap() {
             height: 0,
           },
         ],
+      },
+      {
+        id: 4,
+        name: 'portals',
+        type: 'objectgroup',
+        draworder: 'topdown',
+        x: 0,
+        y: 0,
+        opacity: 1,
+        visible: true,
+        objects: portals.map((p) => ({
+          id: nextObjectId++,
+          name: p.name,
+          type: 'portal',
+          rotation: 0,
+          visible: true,
+          x: p.x * TILE_H,
+          y: p.y * TILE_H,
+          width: p.width * TILE_H,
+          height: p.height * TILE_H,
+          properties: [
+            { name: 'targetMap', type: 'string', value: p.targetMap },
+            { name: 'targetX', type: 'int', value: p.targetX },
+            { name: 'targetY', type: 'int', value: p.targetY },
+          ],
+        })),
       },
     ],
     tilesets: [
@@ -448,16 +443,148 @@ function buildMap() {
   };
 }
 
+/** F01 嫩芽草原（40×40）：草原、小路、池塘，北端有通往曦芽鎮的傳送點 */
+function buildF01() {
+  const W = 40;
+  const H = 40;
+  const rand = mulberry32(20261111);
+  const spawn = { x: 20, y: 20 };
+  const ground = new Array(W * H).fill(0);
+  const props = new Array(W * H).fill(0);
+  const idx = (x, y) => y * W + x;
+
+  // 1. 草地
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const r = rand();
+      ground[idx(x, y)] = r < 0.08 ? GID.grassFlower : r < 0.54 ? GID.grassA : GID.grassB;
+    }
+  }
+  // 2. 東西向蜿蜒小路與通往北邊傳送點的小路
+  for (let x = 2; x <= 37; x++) {
+    const y = Math.round(20 + 4 * Math.sin(x / 5));
+    ground[idx(x, y)] = GID.dirt;
+    ground[idx(x, y + 1)] = GID.dirt;
+  }
+  for (let y = 1; y <= 20; y++) {
+    ground[idx(20, y)] = GID.dirt;
+    ground[idx(21, y)] = GID.dirt;
+  }
+  // 3. 池塘（水面不可行走）與沙岸
+  const pond = { x: 30, y: 9 };
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = Math.hypot(x - pond.x, (y - pond.y) * 1.15);
+      if (d <= 3.6) ground[idx(x, y)] = GID.water;
+      else if (d <= 5) ground[idx(x, y)] = GID.sand;
+    }
+  }
+  // 4. 物件：外圈樹牆、小樹林、零星的樹／石頭／灌木
+  const isGrass = (x, y) => ground[idx(x, y)] <= GID.grassFlower;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const border = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+      if (border) {
+        ground[idx(x, y)] = GID.grassB;
+        props[idx(x, y)] = GID.tree;
+        continue;
+      }
+      if (!isGrass(x, y)) continue;
+      if (Math.hypot(x - spawn.x, y - spawn.y) < 3.5) continue;
+      const inGrove = x >= 7 && x <= 13 && y >= 7 && y <= 13;
+      const r = rand();
+      if (inGrove) {
+        if (r < 0.4) props[idx(x, y)] = GID.tree;
+      } else if (r < 0.05) props[idx(x, y)] = GID.tree;
+      else if (r < 0.07) props[idx(x, y)] = GID.rock;
+      else if (r < 0.1) props[idx(x, y)] = GID.bush;
+    }
+  }
+
+  return makeTiledMap({
+    mapId: 'F01',
+    displayName: '嫩芽草原',
+    width: W,
+    height: H,
+    ground,
+    props,
+    spawn,
+    portals: [{ name: 'to_C01', x: 20, y: 1, width: 2, height: 1, targetMap: 'C01', targetX: 14, targetY: 26 }],
+  });
+}
+
+/** C01 曦芽鎮（30×30）：石板廣場、幾間小屋，南端有通往嫩芽草原的傳送點 */
+function buildC01() {
+  const W = 30;
+  const H = 30;
+  const rand = mulberry32(101);
+  const spawn = { x: 15, y: 15 };
+  const ground = new Array(W * H).fill(0);
+  const props = new Array(W * H).fill(0);
+  const idx = (x, y) => y * W + x;
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const r = rand();
+      ground[idx(x, y)] = r < 0.12 ? GID.grassFlower : r < 0.56 ? GID.grassA : GID.grassB;
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) {
+        ground[idx(x, y)] = GID.grassB;
+        props[idx(x, y)] = GID.tree;
+      }
+    }
+  }
+  // 石板廣場
+  for (let y = 8; y <= 21; y++) {
+    for (let x = 8; x <= 21; x++) ground[idx(x, y)] = GID.stone;
+  }
+  // 通往南門的泥土路
+  for (let y = 22; y <= 28; y++) {
+    ground[idx(14, y)] = GID.dirt;
+    ground[idx(15, y)] = GID.dirt;
+  }
+  // 小屋、木箱與行道樹
+  for (const [x, y] of [[9, 9], [12, 9], [17, 9], [20, 9], [9, 13], [20, 13], [9, 18], [20, 18]]) {
+    props[idx(x, y)] = GID.house;
+  }
+  for (const [x, y] of [[10, 10], [19, 10], [10, 19], [19, 19], [12, 20]]) {
+    props[idx(x, y)] = GID.crate;
+  }
+  for (const [x, y] of [[12, 23], [17, 23], [12, 26], [17, 26], [5, 5], [24, 5], [5, 24], [24, 24]]) {
+    props[idx(x, y)] = GID.tree;
+  }
+  for (const [x, y] of [[4, 12], [25, 16], [6, 20], [23, 9]]) {
+    props[idx(x, y)] = GID.bush;
+  }
+
+  return makeTiledMap({
+    mapId: 'C01',
+    displayName: '曦芽鎮',
+    width: W,
+    height: H,
+    ground,
+    props,
+    spawn,
+    portals: [{ name: 'to_F01', x: 14, y: 28, width: 2, height: 1, targetMap: 'F01', targetX: 20, targetY: 3 }],
+  });
+}
+
 // ---------------------------------------------------------------- 主程式
 
 writePng(resolve(TILESET_DIR, 'ground.png'), drawGroundTileset());
 writePng(resolve(TILESET_DIR, 'props.png'), drawPropsTileset());
 writePng(resolve(SPRITE_DIR, 'player.png'), drawPlayerSheet());
 
-if (!existsSync(MAP_PATH) || process.argv.includes('--force-map')) {
-  mkdirSync(dirname(MAP_PATH), { recursive: true });
-  writeFileSync(MAP_PATH, JSON.stringify(buildMap()) + '\n');
-  console.log(`已產生 ${MAP_PATH}`);
-} else {
-  console.log(`地圖已存在，略過（要覆蓋請加 --force-map）：${MAP_PATH}`);
+const MAPS = [
+  { file: 'f01_sprout_meadow.json', build: buildF01 },
+  { file: 'c01_dawnsprout_town.json', build: buildC01 },
+];
+mkdirSync(MAP_DIR, { recursive: true });
+for (const { file, build } of MAPS) {
+  const path = resolve(MAP_DIR, file);
+  if (!existsSync(path) || process.argv.includes('--force-map')) {
+    writeFileSync(path, JSON.stringify(build()) + '\n');
+    console.log(`已產生 ${path}`);
+  } else {
+    console.log(`地圖已存在，略過（要覆蓋請加 --force-map）：${path}`);
+  }
 }

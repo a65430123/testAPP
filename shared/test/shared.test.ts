@@ -4,10 +4,15 @@ import {
   buildCollisionGrid,
   createMoveState,
   findPath,
+  findPortals,
   findSpawn,
   isWalkable,
   nearestWalkable,
+  portalAt,
+  sanitizeChatText,
+  SnapshotBuffer,
   tileToWorld,
+  validateName,
   worldToTile,
   type CollisionGrid,
   type TiledMap,
@@ -147,5 +152,74 @@ describe('Tiled 地圖解析', () => {
 
   it('出生點換算成格座標', () => {
     expect(findSpawn(map, 'player_spawn')).toEqual({ x: 1.5, y: 1.5 });
+  });
+});
+
+describe('傳送點', () => {
+  const map: TiledMap = {
+    type: 'map', orientation: 'isometric', width: 4, height: 4, tilewidth: 64, tileheight: 32,
+    tilesets: [],
+    layers: [
+      {
+        type: 'objectgroup', id: 1, name: 'portals', visible: true, opacity: 1, x: 0, y: 0,
+        objects: [{
+          id: 1, name: 'to_C01', x: 32, y: 0, width: 64, height: 32,
+          properties: [
+            { name: 'targetMap', type: 'string', value: 'C01' },
+            { name: 'targetX', type: 'int', value: 14 },
+            { name: 'targetY', type: 'int', value: 26 },
+          ],
+        }],
+      },
+    ],
+  };
+
+  it('解析成格座標並可依格子查詢', () => {
+    const portals = findPortals(map);
+    expect(portals).toEqual([
+      { name: 'to_C01', x: 1, y: 0, width: 2, height: 1, targetMap: 'C01', targetX: 14, targetY: 26 },
+    ]);
+    expect(portalAt(portals, 1, 0)?.targetMap).toBe('C01');
+    expect(portalAt(portals, 2, 0)?.targetMap).toBe('C01');
+    expect(portalAt(portals, 3, 0)).toBeUndefined();
+    expect(portalAt(portals, 1, 1)).toBeUndefined();
+  });
+});
+
+describe('插值緩衝', () => {
+  it('在兩筆資料之間線性內插，超過最後一筆時停在最後位置', () => {
+    const buf = new SnapshotBuffer(50);
+    expect(buf.sample(0)).toBeNull();
+    buf.push(1000, 0, 0);
+    buf.push(1050, 1, 2);
+    expect(buf.sample(1025)).toEqual({ x: 0.5, y: 1 });
+    expect(buf.sample(900)).toEqual({ x: 0, y: 0 });
+    expect(buf.sample(2000)).toEqual({ x: 1, y: 2 });
+  });
+
+  it('靜止一段時間後再出發，不會從很久以前開始內插', () => {
+    const buf = new SnapshotBuffer(50);
+    buf.push(1000, 0, 0);
+    buf.push(5000, 1, 0);
+    // 出發前一刻（4950）仍應在原地
+    expect(buf.sample(4900)).toEqual({ x: 0, y: 0 });
+    expect(buf.sample(4975)!.x).toBeCloseTo(0.5);
+  });
+});
+
+describe('名稱與聊天內容檢查', () => {
+  it('角色名稱', () => {
+    expect(validateName('小星')).toBeNull();
+    expect(validateName('a')).not.toBeNull();
+    expect(validateName('有 空白')).not.toBeNull();
+    expect(validateName('這個名字實在是太長太長太長了')).not.toBeNull();
+    expect(validateName(123)).not.toBeNull();
+  });
+
+  it('聊天內容會去除控制字元並截斷', () => {
+    expect(sanitizeChatText('  你好\n世界  ')).toBe('你好 世界');
+    expect(sanitizeChatText('   ')).toBe('');
+    expect([...sanitizeChatText('啊'.repeat(500))]).toHaveLength(120);
+    expect(sanitizeChatText(null)).toBe('');
   });
 });

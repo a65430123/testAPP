@@ -17,6 +17,8 @@ export const MAP_LAYER = {
   props: 'props',
   /** 出生點物件層 */
   spawns: 'spawns',
+  /** 傳送點物件層 */
+  portals: 'portals',
 } as const;
 
 /** 玩家出生點的物件名稱。 */

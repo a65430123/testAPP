@@ -76,6 +76,7 @@ export interface TiledMap {
   tileheight: number;
   layers: TiledLayer[];
   tilesets: TiledTileset[];
+  properties?: TiledProperty[];
 }
 
 /** Tiled 用 gid 的最高 3 個位元記錄翻轉旗標，取圖磚編號前要先遮掉 */
@@ -189,4 +190,63 @@ export function findSpawn(map: TiledMap, name: string): Point | undefined {
     return undefined;
   }
   return { x: obj.x / map.tileheight, y: obj.y / map.tileheight };
+}
+
+/** 讀取地圖的自訂屬性（字串） */
+export function getMapProperty(map: TiledMap, name: string): string | undefined {
+  const value = map.properties?.find((p) => p.name === name)?.value;
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** 傳送點：站進這個範圍就會被送到目標地圖的指定格子 */
+export interface Portal {
+  name: string;
+  /** 範圍（格座標，左上角與寬高） */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  targetMap: string;
+  /** 抵達目標地圖後所站的格子（整數格座標） */
+  targetX: number;
+  targetY: number;
+}
+
+/**
+ * 解析 portals 物件層。每個矩形物件需要三個自訂屬性：
+ * targetMap（字串）、targetX、targetY（整數，目標格座標）。
+ */
+export function findPortals(map: TiledMap): Portal[] {
+  const layer = getObjectLayer(map, MAP_LAYER.portals);
+  if (!layer) {
+    return [];
+  }
+  const portals: Portal[] = [];
+  for (const obj of layer.objects) {
+    const prop = (name: string): unknown => obj.properties?.find((p) => p.name === name)?.value;
+    const targetMap = prop('targetMap');
+    const targetX = prop('targetX');
+    const targetY = prop('targetY');
+    if (typeof targetMap !== 'string' || typeof targetX !== 'number' || typeof targetY !== 'number') {
+      throw new Error(`傳送點「${obj.name}」缺少 targetMap／targetX／targetY 屬性`);
+    }
+    portals.push({
+      name: obj.name,
+      x: obj.x / map.tileheight,
+      y: obj.y / map.tileheight,
+      width: Math.max(obj.width / map.tileheight, 1),
+      height: Math.max(obj.height / map.tileheight, 1),
+      targetMap,
+      targetX,
+      targetY,
+    });
+  }
+  return portals;
+}
+
+/** 找出涵蓋指定格子的傳送點 */
+export function portalAt(portals: readonly Portal[], tx: number, ty: number): Portal | undefined {
+  return portals.find(
+    (p) => tx + 0.5 >= p.x && tx + 0.5 < p.x + p.width && ty + 0.5 >= p.y && ty + 0.5 < p.y + p.height,
+  );
 }

@@ -4,3 +4,5 @@ export * from './iso';
 export * from './tiled';
 export * from './pathfinding';
 export * from './movement';
+export * from './interpolation';
+export * from './protocol';
