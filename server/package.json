@@ -7,7 +7,7 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "migrate": "tsx src/db/migrate.ts",
-    "smoke": "tsx scripts/smoke.ts && tsx scripts/smoke-combat.ts",
+    "smoke": "tsx scripts/smoke.ts && tsx scripts/smoke-combat.ts && tsx scripts/smoke-items.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

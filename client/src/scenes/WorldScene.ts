@@ -7,8 +7,10 @@ import {
   createMoveState,
   currentTile,
   findPath,
+  findNpcs,
   findPortals,
   getMonsterDef,
+  getNpcDef,
   getTileLayer,
   getTileset,
   inBounds,
@@ -19,6 +21,7 @@ import {
   MOVE_MIN_INTERVAL_MS,
   MSG,
   nearestWalkable,
+  NPC_RANGE,
   PICKUP_RANGE,
   PLAYER_MOVE_SPEED,
   REVIVE_DELAY_MS,
@@ -43,16 +46,20 @@ import {
   type SelfMessage,
   type SkillDef,
   type SkillRequest,
+  type StorageMessage,
   type Stats,
   type SystemMessage,
   type TiledMap,
   type TilePoint,
+  type TradeEndMessage,
+  type TradeInviteMessage,
+  type TradeStateMessage,
   type TransferMessage,
-  type UseItemRequest,
 } from '@starmemory/shared';
 import { mapDisplayName, MAPS, MONSTER_FRAME, PLAYER_FRAME, REGISTRY, TEXTURE } from '../assets';
 import { DropEntity } from '../entities/DropEntity';
 import { ENTITY_KEY, ENTITY_KIND, MonsterEntity } from '../entities/MonsterEntity';
+import { NpcEntity } from '../entities/NpcEntity';
 import { PlayerEntity } from '../entities/PlayerEntity';
 import {
   joinMap,
@@ -64,7 +71,7 @@ import {
   type Session,
 } from '../net/session';
 import type { ChatBox } from '../ui/chat';
-import type { InventoryPanel } from '../ui/inventory';
+import type { ItemUi } from '../ui/ItemUi';
 import type { SkillBar } from '../ui/skills';
 import type { StatusPanel } from '../ui/status';
 
@@ -117,7 +124,7 @@ export class WorldScene extends Phaser.Scene {
   private grid!: CollisionGrid;
   private session!: Session;
   private chat!: ChatBox;
-  private inventory!: InventoryPanel;
+  private itemUi!: ItemUi;
   private statusPanel!: StatusPanel;
   private skillBar!: SkillBar;
 
@@ -141,6 +148,10 @@ export class WorldScene extends Phaser.Scene {
   private pendingTarget: TilePoint | null = null;
   /** 正在走過去準備撿的掉落物 */
   private pendingPickup: string | null = null;
+  /** 正在走過去準備交談的 NPC */
+  private pendingNpc: string | null = null;
+  /** 這張地圖上各 NPC 的位置（格座標） */
+  private readonly npcPositions = new Map<string, { x: number; y: number }>();
   /** 目前選取的魔物 */
   private selectedKey: string | null = null;
   private lastSendAt = 0;
@@ -173,6 +184,8 @@ export class WorldScene extends Phaser.Scene {
     this.lastTarget = null;
     this.pendingTarget = null;
     this.pendingPickup = null;
+    this.pendingNpc = null;
+    this.npcPositions.clear();
     this.selectedKey = null;
     this.lastSendAt = 0;
     this.lastRetargetAt = 0;
@@ -194,13 +207,14 @@ export class WorldScene extends Phaser.Scene {
     this.grid = buildCollisionGrid(mapData);
     this.session = this.registry.get(REGISTRY.session) as Session;
     this.chat = this.registry.get(REGISTRY.chat) as ChatBox;
-    this.inventory = this.registry.get(REGISTRY.inventory) as InventoryPanel;
+    this.itemUi = this.registry.get(REGISTRY.itemUi) as ItemUi;
     this.statusPanel = this.registry.get(REGISTRY.status) as StatusPanel;
     this.skillBar = this.registry.get(REGISTRY.skills) as SkillBar;
 
     this.createGround();
     this.createProps();
     this.createPortals();
+    this.createNpcs();
     this.createMarkers();
     this.createUi();
     this.setupCamera();
@@ -294,6 +308,18 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  /** NPC：位置來自地圖的 npcs 物件層，內容來自資料表 */
+  private createNpcs(): void {
+    for (const placement of findNpcs(this.mapData)) {
+      const def = getNpcDef(placement.npcId);
+      if (!def) {
+        continue;
+      }
+      this.npcPositions.set(def.id, { x: placement.x, y: placement.y });
+      new NpcEntity(this, this.geo, def, placement.x, placement.y);
+    }
+  }
+
   /** 目的地標記（會淡出的菱形）與攻擊目標標記（魔物腳下的紅圈） */
   private createMarkers(): void {
     const halfW = this.geo.tileWidth / 2;
@@ -367,15 +393,23 @@ export class WorldScene extends Phaser.Scene {
     this.input.on(
       Phaser.Input.Events.POINTER_DOWN,
       (pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
-        // 點到魔物或掉落物：交給對應的處理，不當成移動
+        // 點到魔物、掉落物、NPC 或其他玩家：交給對應的處理，不當成移動
         const hit = over.find((obj) => obj.getData(ENTITY_KIND) !== undefined);
         if (hit) {
           this.holdingGround = false;
           const key = hit.getData(ENTITY_KEY) as string;
-          if (hit.getData(ENTITY_KIND) === 'monster') {
+          const kind = hit.getData(ENTITY_KIND) as string;
+          if (kind === 'monster') {
             this.attackMonster(key);
-          } else {
+          } else if (kind === 'drop') {
             this.pickUpDrop(key);
+          } else if (kind === 'npc') {
+            this.talkToNpc(key);
+          } else if (kind === 'player') {
+            const name = this.remotes.get(key)?.entity.name;
+            if (name && !this.dead) {
+              this.itemUi.askTrade(key, name);
+            }
           }
           return;
         }
@@ -438,7 +472,11 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.system, (message: SystemMessage) => this.chat.addSystem(message.text));
     room.onMessage(MSG.moveReject, (message: MoveRejectMessage) => this.onMoveRejected(message));
     room.onMessage(MSG.transfer, (message: TransferMessage) => void this.onTransfer(message));
-    room.onMessage(MSG.inventory, (message: InventoryMessage) => this.inventory.update(message));
+    room.onMessage(MSG.inventory, (message: InventoryMessage) => this.itemUi.onInventory(message));
+    room.onMessage(MSG.storage, (message: StorageMessage) => this.itemUi.onStorage(message));
+    room.onMessage(MSG.tradeRequest, (message: TradeInviteMessage) => this.itemUi.onTradeInvite(message));
+    room.onMessage(MSG.tradeState, (message: TradeStateMessage) => this.itemUi.onTradeState(message));
+    room.onMessage(MSG.tradeEnd, (message: TradeEndMessage) => this.itemUi.onTradeEnd(message));
     room.onMessage(MSG.self, (message: SelfMessage) => this.onSelf(message));
     room.onMessage(MSG.combat, (event: CombatEvent) => this.onCombat(event));
     room.onLeave((code: number) => this.onRoomLeave(code));
@@ -447,9 +485,10 @@ export class WorldScene extends Phaser.Scene {
     this.chat.onSend((channel: ChatChannel, text: string) => {
       room.send(MSG.chat, { channel, text } satisfies ChatSendMessage);
     });
-    this.inventory.onUse((slot: number) => {
-      room.send(MSG.useItem, { slot } satisfies UseItemRequest);
-    });
+    this.itemUi.bind(
+      (type, message) => room.send(type, message),
+      (text) => this.chat.addSystem(text),
+    );
     this.statusPanel.onAlloc((stat: keyof Stats) => {
       room.send(MSG.allocStat, { stat } satisfies AllocStatRequest);
     });
@@ -479,6 +518,7 @@ export class WorldScene extends Phaser.Scene {
     buffer.reset(performance.now(), player.x, player.y);
     const entity = new PlayerEntity(this, this.geo, player.name, player.level, player.x, player.y, false);
     entity.setHp(player.hp, player.maxHp);
+    entity.makeClickable(sessionId);
     this.remotes.set(sessionId, { entity, buffer, lastX: player.x, lastY: player.y });
   }
 
@@ -644,6 +684,26 @@ export class WorldScene extends Phaser.Scene {
     this.pendingPickup = key;
   }
 
+  /** 點 NPC：夠近就直接開啟視窗，否則先走到他旁邊 */
+  private talkToNpc(npcId: string): void {
+    const npc = this.npcPositions.get(npcId);
+    if (!npc || !this.room || !this.move || this.dead || this.transferring) {
+      return;
+    }
+    if (this.inNpcRange(npc)) {
+      this.itemUi.openNpc(npcId);
+      return;
+    }
+    // 走到 NPC 前方（畫面下方）那一格
+    const world = tileToWorld(npc.x, npc.y + 1, this.geo);
+    this.requestMoveTo(world.x, world.y);
+    this.pendingNpc = npcId;
+  }
+
+  private inNpcRange(npc: { x: number; y: number }): boolean {
+    return Math.hypot(this.serverX - npc.x, this.serverY - npc.y) <= NPC_RANGE - 0.3;
+  }
+
   /** 以伺服器認定的位置判斷（伺服器也是用它的位置檢查距離） */
   private inPickupRange(drop: DropEntity): boolean {
     return Math.hypot(this.serverX - drop.tileX, this.serverY - drop.tileY) <= PICKUP_RANGE - PICKUP_MARGIN;
@@ -771,7 +831,7 @@ export class WorldScene extends Phaser.Scene {
   /** 讓介面元件不再對已經離開的房間送訊息 */
   private detachUi(): void {
     this.chat.onSend(null);
-    this.inventory.onUse(null);
+    this.itemUi.unbind();
     this.statusPanel.onAlloc(null);
     this.skillBar.onUse(null);
   }
@@ -824,6 +884,7 @@ export class WorldScene extends Phaser.Scene {
     // 回到本機預測：從目前畫面上的位置出發
     this.serverDriven = false;
     this.pendingPickup = null;
+    this.pendingNpc = null;
     this.move.path = path;
     this.lastTarget = target;
     this.pendingTarget = target;
@@ -920,6 +981,17 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
+    // 走到 NPC 旁邊了：開啟視窗
+    if (this.pendingNpc) {
+      const npc = this.npcPositions.get(this.pendingNpc);
+      if (!npc) {
+        this.pendingNpc = null;
+      } else if (this.inNpcRange(npc)) {
+        this.itemUi.openNpc(this.pendingNpc);
+        this.pendingNpc = null;
+      }
+    }
+
     // 其他玩家與魔物：取「稍早一點」的時間點做插值
     const renderTime = performance.now() - INTERP_DELAY_MS;
     for (const remote of this.remotes.values()) {
@@ -954,7 +1026,7 @@ export class WorldScene extends Phaser.Scene {
     const tile = currentTile(this.move);
     const online = this.remotes.size + 1;
     this.hud.setText(
-      `${name}　座標 (${tile.x}, ${tile.y})　本圖 ${online} 人\n點地面移動、點魔物攻擊、點掉落物撿取，Enter 聊天`,
+      `${name}　座標 (${tile.x}, ${tile.y})　本圖 ${online} 人\n點地面移動、點魔物攻擊、點掉落物撿取、點 NPC 交談、點玩家交易`,
     );
   }
 }

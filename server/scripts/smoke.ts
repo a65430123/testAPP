@@ -184,9 +184,9 @@ async function main(): Promise<void> {
   check('兩位玩家進入同一個房間並看得到彼此', seen && roomA.roomId === roomB.roomId);
   await waitFor(() => getInv() !== undefined, 2000);
   check(
-    '進入房間後收到背包（含職業的起始道具）',
+    '進入房間後收到背包與裝備（起始武器已穿在身上）',
     getInv()?.items.find((i) => i.itemId === 'potion_hp_s')?.quantity === 10 &&
-      getInv()!.items.some((i) => i.itemId === 'novice_sword') &&
+      getInv()!.equipment.some((i) => i.itemId === 'novice_sword') &&
       getInv()!.coins === 100,
   );
 

@@ -10,3 +10,5 @@ export * from './data';
 export * from './character';
 export * from './progression';
 export * from './combat';
+export * from './equipment';
+export * from './inventory';

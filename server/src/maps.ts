@@ -5,14 +5,17 @@ import { fileURLToPath } from 'node:url';
 import {
   buildCollisionGrid,
   findMonsterSpawns,
+  findNpcs,
   findPortals,
   findSpawn,
   getMapProperty,
   getMonsterDef,
+  getNpcDef,
   isWalkable,
   SPAWN_PLAYER,
   type CollisionGrid,
   type MonsterSpawnArea,
+  type NpcPlacement,
   type Point,
   type Portal,
   type TiledMap,
@@ -24,6 +27,7 @@ export interface GameMap {
   grid: CollisionGrid;
   portals: Portal[];
   monsterSpawns: MonsterSpawnArea[];
+  npcs: NpcPlacement[];
   /** 預設出生點（格座標，浮點數，位於格子中心） */
   spawn: Point;
 }
@@ -51,6 +55,7 @@ function loadMaps(): Map<string, GameMap> {
       grid: buildCollisionGrid(tiled),
       portals: findPortals(tiled),
       monsterSpawns: findMonsterSpawns(tiled),
+      npcs: findNpcs(tiled),
       spawn,
     });
   }
@@ -59,6 +64,14 @@ function loadMaps(): Map<string, GameMap> {
     for (const area of map.monsterSpawns) {
       if (!getMonsterDef(area.monsterId)) {
         throw new Error(`地圖 ${map.id} 的重生區「${area.name}」指定了不存在的魔物 ${area.monsterId}`);
+      }
+    }
+  }
+  // 檢查地圖上的 NPC 都存在於資料表
+  for (const map of maps.values()) {
+    for (const npc of map.npcs) {
+      if (!getNpcDef(npc.npcId)) {
+        throw new Error(`地圖 ${map.id} 放了不存在的 NPC ${npc.npcId}`);
       }
     }
   }

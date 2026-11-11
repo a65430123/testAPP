@@ -1,20 +1,26 @@
 // 角色資料存取：建立、列表、載入、存檔
 
+import { randomUUID } from 'node:crypto';
 import {
-  addItemToInventory,
-  computeMaxHp,
-  computeMaxSp,
+  addToContainer,
+  computePlayerCombatStats,
+  EQUIP_SLOTS,
+  getItemDef,
+  INVENTORY_SIZE,
   MAX_CHARACTERS_PER_ACCOUNT,
   NEW_CHARACTER,
   newStats,
+  slotsForType,
   type CharacterSummary,
   type ClassDef,
   type InventoryItem,
   type Stats,
 } from '@starmemory/shared';
+import { loadCharacterItems, writeItemChange, type ItemLogEntry } from './items';
+import { waitForCharacterWrites, withCharacterLock } from './locks';
 import { isUniqueViolation, pool, withTransaction } from './pool';
 
-/** 遊戲中使用的完整角色資料（對應 characters 一列 + character_items 多列） */
+/** 遊戲中使用的完整角色資料（對應 characters 一列 + items 中屬於這個角色的列） */
 export interface CharacterRecord {
   id: number;
   accountId: number;
@@ -26,11 +32,20 @@ export interface CharacterRecord {
   stats: Stats;
   hp: number;
   sp: number;
+  /** 目前的星幣（記憶體中的最新值） */
   coins: number;
+  /**
+   * 打怪得到、還沒寫進資料庫的星幣。存檔時以「資料庫目前值 + 這個數字」更新，
+   * 這樣不論存檔與道具交易的先後順序，資料庫的星幣都不會被舊值蓋掉。
+   */
+  unsavedCoins: number;
   mapId: string;
   x: number;
   y: number;
+  /** 背包 */
   inventory: InventoryItem[];
+  /** 身上的裝備；slot 是 EQUIP_SLOTS 的索引 */
+  equipment: InventoryItem[];
 }
 
 /** 角色名稱已被使用 */
@@ -68,7 +83,7 @@ export async function listCharacters(accountId: number): Promise<CharacterSummar
   return result.rows.map((r) => ({ id: r.id, name: r.name, classId: r.class_id, level: r.level, mapId: r.map_id }));
 }
 
-/** 建立新角色：寫入初始素質、滿 HP／SP、起始位置與職業的起始道具 */
+/** 建立新角色：寫入初始素質、滿 HP／SP、起始位置；起始道具中的裝備直接穿在身上，其餘放進背包 */
 export async function createCharacter(
   accountId: number,
   name: string,
@@ -77,10 +92,26 @@ export async function createCharacter(
 ): Promise<CharacterSummary> {
   const stats = newStats();
   const level = NEW_CHARACTER.level;
-  const inventory: InventoryItem[] = [];
+  const bag: InventoryItem[] = [];
+  const equip: InventoryItem[] = [];
   for (const item of cls.startItems) {
-    addItemToInventory(inventory, item.itemId, item.quantity);
+    const type = getItemDef(item.itemId)?.equip?.type;
+    const slotName = type ? slotsForType(type).find((s) => !equip.some((e) => e.slot === EQUIP_SLOTS.indexOf(s))) : undefined;
+    if (slotName && item.quantity === 1) {
+      equip.push({
+        uid: randomUUID(),
+        slot: EQUIP_SLOTS.indexOf(slotName),
+        itemId: item.itemId,
+        quantity: 1,
+        refine: 0,
+        cardSlots: 0,
+        cards: [],
+      });
+    } else {
+      addToContainer(bag, INVENTORY_SIZE, item, randomUUID);
+    }
   }
+  const combat = computePlayerCombatStats(cls, level, stats, equip);
 
   try {
     return await withTransaction(async (client) => {
@@ -103,12 +134,20 @@ export async function createCharacter(
         [
           accountId, name, cls.id, level, NEW_CHARACTER.statPoints,
           stats.pow, stats.swf, stats.con, stats.mnd, stats.foc, stats.for,
-          computeMaxHp(cls, level, stats), computeMaxSp(cls, level, stats),
-          NEW_CHARACTER.coins, start.mapId, start.x, start.y,
+          combat.maxHp, combat.maxSp, NEW_CHARACTER.coins, start.mapId, start.x, start.y,
         ],
       );
       const id = inserted.rows[0]!.id;
-      await insertInventory(client, id, inventory);
+      // 起始道具與星幣也留下紀錄，之後才能對得出每個道具的來源
+      const logs: ItemLogEntry[] = [...bag, ...equip].map((item) => ({
+        action: 'create',
+        characterId: id,
+        itemUid: item.uid,
+        itemId: item.itemId,
+        quantity: item.quantity,
+      }));
+      logs.push({ action: 'create', characterId: id, coins: NEW_CHARACTER.coins });
+      await writeItemChange(client, [{ characterId: id, accountId, bag, equip }], logs);
       return { id, name, classId: cls.id, level, mapId: start.mapId };
     });
   } catch (err) {
@@ -119,10 +158,10 @@ export async function createCharacter(
   }
 }
 
-/** 載入完整角色資料（含背包）；角色不存在時回傳 undefined */
+/** 載入完整角色資料（含背包與裝備）；角色不存在時回傳 undefined */
 export async function loadCharacter(characterId: number): Promise<CharacterRecord | undefined> {
-  // 若同一角色還有存檔正在寫入，等它完成再讀，確保讀到最新資料
-  await pendingSaves.get(characterId);
+  // 若同一角色還有寫入正在排隊，等它完成再讀，確保讀到最新資料
+  await waitForCharacterWrites(characterId);
 
   const result = await pool.query<CharacterDbRow>(
     `SELECT id, account_id, name, class_id, level, exp, stat_points,
@@ -135,10 +174,7 @@ export async function loadCharacter(characterId: number): Promise<CharacterRecor
   if (!row) {
     return undefined;
   }
-  const items = await pool.query<{ slot: number; item_id: string; quantity: number }>(
-    'SELECT slot, item_id, quantity FROM character_items WHERE character_id = $1 ORDER BY slot',
-    [characterId],
-  );
+  const items = await loadCharacterItems(characterId);
   return {
     id: row.id,
     accountId: row.account_id,
@@ -158,81 +194,43 @@ export async function loadCharacter(characterId: number): Promise<CharacterRecor
     hp: row.hp,
     sp: row.sp,
     coins: row.coins,
+    unsavedCoins: 0,
     mapId: row.map_id,
     x: row.x,
     y: row.y,
-    inventory: items.rows.map((r) => ({ slot: r.slot, itemId: r.item_id, quantity: r.quantity })),
+    inventory: items.bag,
+    equipment: items.equip,
   };
 }
-
-/** 每個角色目前排隊中的存檔；同一角色的存檔一律依序執行，不會互相交錯 */
-const pendingSaves = new Map<number, Promise<void>>();
 
 /**
- * 存檔：把角色目前的狀態寫回資料庫。
+ * 存檔：把角色的位置、等級、素質、HP／SP 寫回資料庫，並把打怪得到的星幣加上去。
+ * 背包、裝備、倉庫不在這裡寫入——它們在每次異動時就已經即時寫入（見 db/items.ts）。
  * 呼叫當下就會複製一份資料，之後記憶體中的角色繼續變動也不影響這次寫入的內容。
- * @param withInventory 是否連背包一起寫入（背包沒變動時可省略以減少寫入量）
  */
-export function saveCharacter(record: CharacterRecord, withInventory: boolean): Promise<void> {
-  const snapshot: CharacterRecord = {
-    ...record,
-    stats: { ...record.stats },
-    inventory: withInventory ? record.inventory.map((item) => ({ ...item })) : [],
-  };
-  const previous = pendingSaves.get(record.id) ?? Promise.resolve();
-  const current = previous
-    .catch(() => undefined) // 前一次失敗不影響這一次
-    .then(() => writeCharacter(snapshot, withInventory));
-  pendingSaves.set(record.id, current);
-  // 佇列清空後移除，避免 Map 無限成長
-  const cleanup = (): void => {
-    if (pendingSaves.get(record.id) === current) {
-      pendingSaves.delete(record.id);
-    }
-  };
-  current.then(cleanup, cleanup);
-  return current;
-}
-
-async function writeCharacter(c: CharacterRecord, withInventory: boolean): Promise<void> {
-  await withTransaction(async (client) => {
-    await client.query(
-      `UPDATE characters SET
-         level = $2, exp = $3, stat_points = $4,
-         stat_pow = $5, stat_swf = $6, stat_con = $7, stat_mnd = $8, stat_foc = $9, stat_for = $10,
-         hp = $11, sp = $12, coins = $13, map_id = $14, x = $15, y = $16, saved_at = now()
-       WHERE id = $1`,
-      [
-        c.id, c.level, c.exp, c.statPoints,
-        c.stats.pow, c.stats.swf, c.stats.con, c.stats.mnd, c.stats.foc, c.stats.for,
-        c.hp, c.sp, c.coins, c.mapId, c.x, c.y,
-      ],
-    );
-    if (withInventory) {
-      // 背包最多 40 格，整批刪除再寫入最單純，也不會留下殘餘資料
-      await client.query('DELETE FROM character_items WHERE character_id = $1', [c.id]);
-      await insertInventory(client, c.id, c.inventory);
-    }
+export function saveCharacter(record: CharacterRecord): Promise<void> {
+  const snapshot = { ...record, stats: { ...record.stats } };
+  const coinsDelta = record.unsavedCoins;
+  record.unsavedCoins = 0;
+  return withCharacterLock([record.id], () =>
+    pool
+      .query(
+        `UPDATE characters SET
+           level = $2, exp = $3, stat_points = $4,
+           stat_pow = $5, stat_swf = $6, stat_con = $7, stat_mnd = $8, stat_foc = $9, stat_for = $10,
+           hp = $11, sp = $12, coins = coins + $13, map_id = $14, x = $15, y = $16, saved_at = now()
+         WHERE id = $1`,
+        [
+          snapshot.id, snapshot.level, snapshot.exp, snapshot.statPoints,
+          snapshot.stats.pow, snapshot.stats.swf, snapshot.stats.con,
+          snapshot.stats.mnd, snapshot.stats.foc, snapshot.stats.for,
+          snapshot.hp, snapshot.sp, coinsDelta, snapshot.mapId, snapshot.x, snapshot.y,
+        ],
+      )
+      .then(() => undefined),
+  ).catch((err: unknown) => {
+    // 寫入失敗：把還沒存到的星幣加回去，下次存檔再試
+    record.unsavedCoins += coinsDelta;
+    throw err;
   });
-}
-
-async function insertInventory(
-  client: { query: (text: string, values: unknown[]) => Promise<unknown> },
-  characterId: number,
-  inventory: InventoryItem[],
-): Promise<void> {
-  if (inventory.length === 0) {
-    return;
-  }
-  // 用 unnest 一次寫入多列
-  await client.query(
-    `INSERT INTO character_items (character_id, slot, item_id, quantity)
-     SELECT $1, * FROM unnest($2::int[], $3::text[], $4::int[])`,
-    [
-      characterId,
-      inventory.map((i) => i.slot),
-      inventory.map((i) => i.itemId),
-      inventory.map((i) => i.quantity),
-    ],
-  );
 }

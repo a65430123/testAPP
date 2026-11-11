@@ -2,6 +2,7 @@
 
 import { computeMaxHp, computeMaxSp, type Stats } from './character';
 import type { ClassDef, Element, MonsterDef, MonsterTier, Race, Size } from './data';
+import { computeEquipTotals, UNARMED_ATK, type ItemStack } from './equipment';
 
 /** 屬性相剋表：ELEMENT_TABLE[攻擊屬性][防守屬性] = 傷害倍率 */
 export const ELEMENT_TABLE: Record<Element, Record<Element, number>> = {
@@ -50,45 +51,70 @@ export interface Combatant {
 const NO_SIZE_MODIFIER: Record<Size, number> = { small: 1, medium: 1, large: 1 };
 const TIER_ACCURACY_BONUS: Record<MonsterTier, number> = { normal: 0, elite: 10, boss: 25 };
 
-/** 玩家的戰鬥數值，另含 MaxHP／MaxSP 與攻擊間隔 */
+/** 玩家的戰鬥數值，另含 MaxHP／MaxSP、攻擊間隔與回復加成 */
 export interface PlayerCombatStats extends Combatant {
   maxHp: number;
   maxSp: number;
   attackIntervalMs: number;
+  /** HP 自然回復量加成（%） */
+  hpRegenPct: number;
+  /** 含裝備加成的六項素質 */
+  totalStats: Stats;
 }
 
-/** 由職業、等級、素質計算玩家的戰鬥數值（裝備系統完成前，防禦為 0、武器攻擊力取職業的基礎值） */
-export function computePlayerCombatStats(cls: ClassDef, level: number, stats: Stats): PlayerCombatStats {
+/**
+ * 由職業、等級、素質與身上的裝備計算玩家的戰鬥數值。
+ * 裝備與卡片的素質加成會先加到素質上，再代入各項公式。
+ */
+export function computePlayerCombatStats(
+  cls: ClassDef,
+  level: number,
+  baseStats: Stats,
+  equipment: readonly ItemStack[] = [],
+): PlayerCombatStats {
+  const gear = computeEquipTotals(equipment);
+  const stats: Stats = {
+    pow: baseStats.pow + gear.stats.pow,
+    swf: baseStats.swf + gear.stats.swf,
+    con: baseStats.con + gear.stats.con,
+    mnd: baseStats.mnd + gear.stats.mnd,
+    foc: baseStats.foc + gear.stats.foc,
+    for: baseStats.for + gear.stats.for,
+  };
   const half = (n: number): number => Math.floor(n / 2);
   const levelBonus = half(level);
+  const weaponAtk = gear.weaponAtk ?? UNARMED_ATK;
+  const weaponMatk = gear.weaponMatk ?? UNARMED_ATK;
   let atk: number;
   if (cls.attackType === 'ranged') {
-    atk = cls.weaponAtk + stats.foc * 2 + Math.floor(stats.foc / 10) ** 2 + half(stats.pow) + levelBonus;
+    atk = weaponAtk + stats.foc * 2 + Math.floor(stats.foc / 10) ** 2 + half(stats.pow) + levelBonus;
   } else {
-    atk = cls.weaponAtk + stats.pow * 2 + Math.floor(stats.pow / 10) ** 2 + half(stats.foc) + levelBonus;
+    atk = weaponAtk + stats.pow * 2 + Math.floor(stats.pow / 10) ** 2 + half(stats.foc) + levelBonus;
   }
-  const matk = cls.weaponAtk + stats.mnd * 2 + Math.floor(stats.mnd / 8) ** 2 + levelBonus;
+  const matk = weaponMatk + stats.mnd * 2 + Math.floor(stats.mnd / 8) ** 2 + levelBonus;
   const speedBonus = Math.min(0.6, stats.swf * 0.004 + stats.foc * 0.001);
   return {
     level,
-    atk,
-    matk,
-    def: 0,
-    mdef: 0,
+    atk: atk + gear.atk,
+    matk: matk + gear.matk,
+    def: gear.def,
+    mdef: gear.mdef,
     flatPhysReduce: half(stats.con) + Math.floor(level / 4),
     flatMagicReduce: half(stats.mnd) + Math.floor(level / 4),
-    hit: level + stats.foc * 2,
-    eva: level + stats.swf * 2,
-    crit: Math.min(CRIT_RATE_MAX, 1 + stats.for * 0.3),
+    hit: level + stats.foc * 2 + gear.hit,
+    eva: level + stats.swf * 2 + gear.eva,
+    crit: Math.min(CRIT_RATE_MAX, 1 + stats.for * 0.3 + gear.crit),
     critResist: stats.for * 0.1,
     variance: Math.max(0.02, 0.12 - stats.foc * 0.001),
     element: 'neutral',
     race: 'humanoid',
     size: 'medium',
     sizeModifier: cls.sizeModifier,
-    maxHp: computeMaxHp(cls, level, stats),
-    maxSp: computeMaxSp(cls, level, stats),
+    maxHp: Math.floor((computeMaxHp(cls, level, stats) + gear.maxHp) * (1 + gear.maxHpPct)),
+    maxSp: computeMaxSp(cls, level, stats) + gear.maxSp,
     attackIntervalMs: Math.round(cls.attackIntervalMs * (1 - speedBonus)),
+    hpRegenPct: gear.hpRegenPct,
+    totalStats: stats,
   };
 }
 
@@ -164,7 +190,7 @@ export function rollAttack(
   const variance = 1 - attacker.variance + rng() * attacker.variance * 2;
   let damage = (physical ? attacker.atk : attacker.matk) * options.power * variance;
 
-  // 4. 加成乘區：目前只有武器的體型修正（種族、首領加成等裝備與卡片完成後加入）
+  // 4. 加成乘區：目前只有武器的體型修正（種族、首領加成等之後隨卡片效果擴充）
   if (physical) {
     damage *= attacker.sizeModifier[defender.size];
   }

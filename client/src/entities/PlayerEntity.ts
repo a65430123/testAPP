@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { tileToWorld, type IsoGeometry } from '@starmemory/shared';
 import { PLAYER_FRAME, TEXTURE } from '../assets';
 import { HpBar } from './HpBar';
+import { ENTITY_KEY, ENTITY_KIND } from './MonsterEntity';
 
 /** 玩家圖的放大倍率 */
 const PLAYER_SCALE = 1.5;
@@ -49,6 +50,8 @@ export class PlayerEntity {
   private bubbleTimer: Phaser.Time.TimerEvent | null = null;
   private readonly hpBar: HpBar;
   private dead = false;
+  /** 角色名稱 */
+  name = '';
   private facingBack = false;
   private lastMovedAt = -Infinity;
 
@@ -85,8 +88,15 @@ export class PlayerEntity {
     this.layout();
   }
 
+  /** 讓這位玩家可以被點擊（其他玩家：點擊後可提出交易） */
+  makeClickable(sessionId: string): void {
+    this.sprite.setInteractive({ useHandCursor: true });
+    this.sprite.setData(ENTITY_KIND, 'player').setData(ENTITY_KEY, sessionId);
+  }
+
   /** 更新名牌上的等級與名稱 */
   setInfo(name: string, level: number): void {
+    this.name = name;
     const text = `Lv.${level} ${name}`;
     if (this.label.text !== text) {
       this.label.setText(text);

@@ -6,7 +6,7 @@ import { WorldScene } from './scenes/WorldScene';
 import { showAuth } from './ui/auth';
 import { showCharacterSelect } from './ui/characters';
 import { ChatBox } from './ui/chat';
-import { InventoryPanel } from './ui/inventory';
+import { ItemUi } from './ui/ItemUi';
 import { SkillBar } from './ui/skills';
 import { StatusPanel } from './ui/status';
 
@@ -31,7 +31,7 @@ async function obtainSession(): Promise<Session> {
 // 遊戲進入點：先完成登入與選角，才建立 Phaser 遊戲實例
 const session = await obtainSession();
 const chat = new ChatBox();
-const inventory = new InventoryPanel();
+const itemUi = new ItemUi();
 const status = new StatusPanel(session.character.name, session.character.classId);
 const skills = new SkillBar(session.character.classId);
 
@@ -53,7 +53,7 @@ const game = new Phaser.Game({
     preBoot: (g) => {
       g.registry.set(REGISTRY.session, session);
       g.registry.set(REGISTRY.chat, chat);
-      g.registry.set(REGISTRY.inventory, inventory);
+      g.registry.set(REGISTRY.itemUi, itemUi);
       g.registry.set(REGISTRY.status, status);
       g.registry.set(REGISTRY.skills, skills);
     },

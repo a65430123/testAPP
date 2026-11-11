@@ -1,0 +1,5 @@
+[
+  {"id": "c01_grocer", "name": "雜貨商 米露", "type": "shop", "sells": ["potion_hp_s", "potion_sp_s", "feather_return", "sand_starsteel", "sand_starvelvet", "novice_cloth_cap", "novice_tunic", "novice_boots"]},
+  {"id": "c01_smith", "name": "鍛造師 鐵柏", "type": "refine"},
+  {"id": "c01_storage", "name": "倉庫管理員 歐蘿", "type": "storage"}
+]

@@ -297,7 +297,8 @@ async function main(): Promise<void> {
   }
 
   // ---------------------------------------------------------- 7. 技能
-  const dummy = p.nearest('fluffytail') ?? p.nearest('bobolu')!;
+  // 用啵啵露當目標：牠們的重生區離會主動攻擊的芽芽菇很遠，測試不會被打擾
+  const dummy = p.nearest('bobolu')!;
   p.events.length = 0;
   await sleep(120);
   p.attack(dummy.key);
@@ -308,13 +309,19 @@ async function main(): Promise<void> {
   p.room.send(MSG.skill, { skillId: 'heavy_slash', targetId: dummy.key } satisfies SkillRequest);
   await waitFor(() => skillEvents() > 0, 2000);
   await sleep(150);
-  check('施放技能並消耗 SP', skillEvents() === 1 && p.stats.sp === spBefore - 6, `SP ${spBefore} → ${p.stats.sp}`);
+  // 重斬消耗 6 SP；等待期間可能剛好碰上一次自然回復（+1）
+  const spent = spBefore - p.stats.sp;
+  check('施放技能並消耗 SP', skillEvents() === 1 && (spent === 6 || spent === 5), `SP ${spBefore} → ${p.stats.sp}`);
   p.room.send(MSG.skill, { skillId: 'heavy_slash', targetId: dummy.key } satisfies SkillRequest);
   await sleep(150);
   p.room.send(MSG.skill, { skillId: 'spark_bolt', targetId: dummy.key } satisfies SkillRequest); // 別的職業的技能
   await sleep(500);
   check('冷卻中與非本職業的技能無效', skillEvents() === 1 && !p.events.some((e) => e.skillId === 'spark_bolt'));
   await waitFor(() => p.room.state.monsters.get(dummy.key) === undefined, 20000);
+
+  // 接下來幾項會把 HP 調得很低並原地等待：先走到地圖西側的道路上，
+  // 那裡超出芽芽菇的牽引範圍，就算有芽芽菇追過來也會中途折返
+  await p.walkTo(8, 24, 25000);
 
   // ---------------------------------------------------------- 8. 升級（用 GM 指令給經驗）
   const pointsBefore = p.stats.statPoints;

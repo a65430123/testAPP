@@ -30,7 +30,7 @@ export const MONSTER_FRAME = { width: 48, height: 48, footY: 42 } as const;
 export const REGISTRY = {
   session: 'session',
   chat: 'chat',
-  inventory: 'inventory',
+  itemUi: 'itemUi',
   status: 'status',
   skills: 'skills',
 } as const;

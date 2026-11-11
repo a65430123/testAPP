@@ -3,7 +3,9 @@
 import classesJson from '../data/classes.json';
 import itemsJson from '../data/items.json';
 import monstersJson from '../data/monsters.json';
+import npcsJson from '../data/npcs.json';
 import skillsJson from '../data/skills.json';
+import type { CardDef, EquipDef } from './equipment';
 
 // ------------------------------------------------------------ 共用列舉
 
@@ -56,9 +58,7 @@ export interface ClassDef {
   /** 普攻的攻擊方式與射程（格） */
   attackType: AttackType;
   attackRange: number;
-  /** 基礎武器攻擊力（裝備系統完成前的替代值；魔法職業代表武器魔攻） */
-  weaponAtk: number;
-  /** 武器的基礎攻擊間隔（毫秒） */
+  /** 基礎攻擊間隔（毫秒） */
   attackIntervalMs: number;
   /** 武器對各體型的傷害修正 */
   sizeModifier: Record<Size, number>;
@@ -79,8 +79,28 @@ export interface ItemDef {
   /** 同一格最多可堆疊的數量 */
   maxStack: number;
   description: string;
+  /** 賣給 NPC 的價格 */
+  sellPrice: number;
+  /** 向 NPC 購買的價格（只有商店有賣的道具才有） */
+  buyPrice?: number;
   /** 使用後的效果（只有消耗品有） */
   effect?: { hp?: number; sp?: number };
+  /** 裝備設定（只有裝備有） */
+  equip?: EquipDef;
+  /** 卡片設定（只有卡片有） */
+  card?: CardDef;
+}
+
+// ------------------------------------------------------------ NPC
+
+export type NpcType = 'shop' | 'refine' | 'storage';
+
+export interface NpcDef {
+  id: string;
+  name: string;
+  type: NpcType;
+  /** 商店販售的道具代號（只有 shop 有） */
+  sells?: string[];
 }
 
 // ------------------------------------------------------------ 魔物
@@ -153,11 +173,13 @@ export const CLASSES: readonly ClassDef[] = classesJson as ClassDef[];
 export const ITEMS: readonly ItemDef[] = itemsJson as ItemDef[];
 export const MONSTERS: readonly MonsterDef[] = monstersJson as MonsterDef[];
 export const SKILLS: readonly SkillDef[] = skillsJson as SkillDef[];
+export const NPCS: readonly NpcDef[] = npcsJson as NpcDef[];
 
 const classById = new Map(CLASSES.map((c) => [c.id, c]));
 const itemById = new Map(ITEMS.map((i) => [i.id, i]));
 const monsterById = new Map(MONSTERS.map((m) => [m.id, m]));
 const skillById = new Map(SKILLS.map((s) => [s.id, s]));
+const npcById = new Map(NPCS.map((n) => [n.id, n]));
 
 export function getClassDef(id: string): ClassDef | undefined {
   return classById.get(id);
@@ -175,8 +197,12 @@ export function getSkillDef(id: string): SkillDef | undefined {
   return skillById.get(id);
 }
 
+export function getNpcDef(id: string): NpcDef | undefined {
+  return npcById.get(id);
+}
+
 /**
- * 檢查資料表之間的參照是否完整（魔物掉落的道具、職業的技能與起始道具都必須存在）。
+ * 檢查資料表之間的參照是否完整（魔物掉落的道具、職業的技能與起始道具、NPC 販售的道具都必須存在）。
  * 伺服器啟動時呼叫，資料填錯會直接報錯而不是在遊戲中才出問題。
  * @returns 錯誤訊息清單；空陣列表示沒有問題
  */
@@ -205,6 +231,21 @@ export function validateGameData(): string[] {
     }
     if (monster.coins[0] > monster.coins[1] || monster.hp <= 0) {
       errors.push(`魔物 ${monster.id} 的星幣範圍或 HP 不合法`);
+    }
+  }
+  for (const npc of NPCS) {
+    for (const itemId of npc.sells ?? []) {
+      if (itemById.get(itemId)?.buyPrice === undefined) {
+        errors.push(`NPC ${npc.id} 販售的道具 ${itemId} 不存在或沒有設定 buyPrice`);
+      }
+    }
+  }
+  for (const item of ITEMS) {
+    if (item.buyPrice !== undefined && item.sellPrice > item.buyPrice) {
+      errors.push(`道具 ${item.id} 的賣價高於買價（可以無限套利）`);
+    }
+    if ((item.type === 'equipment') !== (item.equip !== undefined) || (item.type === 'card') !== (item.card !== undefined)) {
+      errors.push(`道具 ${item.id} 的類型與 equip／card 設定不一致`);
     }
   }
   return errors;

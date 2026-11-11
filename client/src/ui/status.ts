@@ -1,7 +1,6 @@
 // 個人狀態（HP／SP／經驗條）與素質視窗（HTML，蓋在遊戲畫布左上角）
 
 import {
-  computePlayerCombatStats,
   getClassDef,
   STAT_KEYS,
   STAT_MAX,
@@ -106,17 +105,14 @@ export class StatusPanel {
       box.appendChild(row);
     }
 
-    // 由素質推算的戰鬥數值（與伺服器使用同一份公式）
-    const cls = getClassDef(this.classId);
-    if (cls) {
-      const c = computePlayerCombatStats(cls, self.level, self.stats);
-      const derived = document.createElement('div');
-      derived.className = 'st-derived';
-      derived.textContent =
-        `物攻 ${c.atk}　魔攻 ${c.matk}　命中 ${c.hit}　迴避 ${c.eva}\n` +
-        `暴擊 ${c.crit.toFixed(1)}%　攻擊間隔 ${(c.attackIntervalMs / 1000).toFixed(2)} 秒`;
-      box.appendChild(derived);
-    }
+    // 含裝備加成的戰鬥數值（由伺服器計算）
+    const derived = document.createElement('div');
+    derived.className = 'st-derived';
+    derived.textContent =
+      `物攻 ${self.atk}　魔攻 ${self.matk}　物防 ${self.def}　魔防 ${self.mdef}\n` +
+      `命中 ${self.hit}　迴避 ${self.eva}　暴擊 ${self.crit.toFixed(1)}%\n` +
+      `攻擊間隔 ${(self.attackIntervalMs / 1000).toFixed(2)} 秒`;
+    box.appendChild(derived);
   }
 
   destroy(): void {

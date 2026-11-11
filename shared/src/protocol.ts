@@ -1,6 +1,7 @@
 // 用戶端與伺服器之間的通訊協定：房間名稱、訊息代號、訊息內容型別與共用的驗證規則
 
-import type { InventoryItem, Stats } from './character';
+import type { Stats } from './character';
+import type { InventoryItem, ItemStack } from './equipment';
 
 /** Colyseus 房間類型名稱：每張地圖一個房間，以 mapId 區分 */
 export const ROOM_MAP = 'map';
@@ -36,6 +37,17 @@ export const REGEN_INTERVAL_MS = 6_000;
 /** 死亡懲罰：損失「升到下一級所需經驗」的這個比例；低於指定等級不罰 */
 export const DEATH_EXP_PENALTY = 0.01;
 export const DEATH_PENALTY_MIN_LEVEL = 11;
+
+/** 與 NPC 互動的最大距離（格） */
+export const NPC_RANGE = 3;
+/** 一次向商店購買的數量上限 */
+export const SHOP_MAX_QUANTITY = 99;
+/** 玩家交易：雙方的最大距離（格）、每方最多放幾種道具 */
+export const TRADE_RANGE = 6;
+export const TRADE_MAX_ITEMS = 10;
+/** 交易星幣的稅率（收款方實拿 95%），以及可以交易星幣的最低等級 */
+export const TRADE_TAX = 0.05;
+export const TRADE_COIN_MIN_LEVEL = 15;
 
 /** 帳號與密碼長度限制（bcrypt 只會使用密碼的前 72 個位元組） */
 export const USERNAME_MIN_LENGTH = 3;
@@ -73,6 +85,33 @@ export const MSG = {
   pickup: 'pickup',
   /** 用戶端 → 伺服器：使用背包中的消耗品 */
   useItem: 'useItem',
+  /** 用戶端 → 伺服器：裝備背包中的道具／卸下身上的裝備 */
+  equip: 'equip',
+  unequip: 'unequip',
+  /** 用戶端 → 伺服器：向商店購買／賣出 */
+  shopBuy: 'shopBuy',
+  shopSell: 'shopSell',
+  /** 用戶端 → 伺服器：精煉背包中的裝備 */
+  refine: 'refine',
+  /** 用戶端 → 伺服器：把卡片鑲嵌到背包中的裝備 */
+  cardInsert: 'cardInsert',
+  /** 用戶端 → 伺服器：開啟倉庫、存入、取出 */
+  storageOpen: 'storageOpen',
+  storageDeposit: 'storageDeposit',
+  storageWithdraw: 'storageWithdraw',
+  /** 伺服器 → 用戶端（只傳給本人）：倉庫內容 */
+  storage: 'storage',
+  /** 用戶端 → 伺服器：向某位玩家提出交易；伺服器 → 用戶端：有人向你提出交易 */
+  tradeRequest: 'tradeRequest',
+  /** 用戶端 → 伺服器：接受或拒絕交易邀請 */
+  tradeRespond: 'tradeRespond',
+  /** 用戶端 → 伺服器：更新自己放上交易的內容、確認、取消 */
+  tradeOffer: 'tradeOffer',
+  tradeConfirm: 'tradeConfirm',
+  tradeCancel: 'tradeCancel',
+  /** 伺服器 → 用戶端：交易視窗的最新內容／交易結束 */
+  tradeState: 'tradeState',
+  tradeEnd: 'tradeEnd',
   /** 用戶端 → 伺服器：把一項素質加 1 */
   allocStat: 'allocStat',
   /** 伺服器 → 用戶端（只傳給本人）：等級、經驗、HP／SP、素質等個人數值 */
@@ -212,7 +251,17 @@ export interface SelfMessage {
   sp: number;
   maxSp: number;
   statPoints: number;
+  /** 自己配的素質（不含裝備加成） */
   stats: Stats;
+  /** 含裝備加成的戰鬥數值 */
+  atk: number;
+  matk: number;
+  def: number;
+  mdef: number;
+  hit: number;
+  eva: number;
+  crit: number;
+  attackIntervalMs: number;
 }
 
 /** 戰鬥事件。sourceId／targetId 是玩家的連線代號或魔物的鍵。 */
@@ -226,10 +275,101 @@ export interface CombatEvent {
   skillId?: string;
 }
 
-/** 背包同步訊息 */
+/** 背包同步訊息（只傳給本人）：背包、身上的裝備與星幣 */
 export interface InventoryMessage {
   items: InventoryItem[];
+  /** 身上的裝備；slot 是 EQUIP_SLOTS 的索引 */
+  equipment: InventoryItem[];
   coins: number;
+}
+
+export interface EquipRequest {
+  /** 背包格子位置 */
+  slot: number;
+}
+
+export interface UnequipRequest {
+  /** 裝備欄位（EQUIP_SLOTS 的索引） */
+  equipSlot: number;
+}
+
+export interface ShopBuyRequest {
+  npcId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export interface ShopSellRequest {
+  npcId: string;
+  /** 背包格子位置 */
+  slot: number;
+  quantity: number;
+}
+
+export interface RefineRequest {
+  npcId: string;
+  /** 背包中要精煉的裝備所在格子 */
+  slot: number;
+}
+
+export interface CardInsertRequest {
+  /** 卡片與目標裝備在背包中的格子位置 */
+  cardSlot: number;
+  targetSlot: number;
+}
+
+export interface StorageOpenRequest {
+  npcId: string;
+}
+
+export interface StorageMoveRequest {
+  npcId: string;
+  /** 存入時是背包格子，取出時是倉庫格子 */
+  slot: number;
+  quantity: number;
+}
+
+export interface StorageMessage {
+  items: InventoryItem[];
+}
+
+export interface TradeRequest {
+  /** 對方的連線代號 */
+  targetId: string;
+}
+
+/** 有人向你提出交易 */
+export interface TradeInviteMessage {
+  fromId: string;
+  fromName: string;
+}
+
+export interface TradeRespondRequest {
+  accept: boolean;
+}
+
+/** 自己放上交易的完整內容（每次送出都會取代上一次的內容） */
+export interface TradeOfferRequest {
+  /** 以道具的唯一編號指定，避免格子變動後指到別的道具 */
+  items: Array<{ uid: string; quantity: number }>;
+  coins: number;
+}
+
+export interface TradeSide {
+  name: string;
+  items: ItemStack[];
+  coins: number;
+  confirmed: boolean;
+}
+
+export interface TradeStateMessage {
+  mine: TradeSide;
+  theirs: TradeSide;
+}
+
+export interface TradeEndMessage {
+  completed: boolean;
+  reason: string;
 }
 
 /**

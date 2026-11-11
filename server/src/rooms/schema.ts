@@ -37,6 +37,8 @@ export const DropState = schema(
     quantity: t.number(),
     x: t.number(),
     y: t.number(),
+    /** 裝備類掉落物的卡槽數（撿起來後成為該件裝備的卡槽） */
+    cardSlots: t.number(),
     /** 保護期間內只有這位玩家（連線代號）能撿；空字串表示任何人都能撿 */
     owner: t.string(),
   },

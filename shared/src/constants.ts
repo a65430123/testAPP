@@ -19,6 +19,8 @@ export const MAP_LAYER = {
   spawns: 'spawns',
   /** 傳送點物件層 */
   portals: 'portals',
+  /** NPC 物件層 */
+  npcs: 'npcs',
   /** 魔物重生區物件層 */
   monsterSpawns: 'monster_spawns',
 } as const;

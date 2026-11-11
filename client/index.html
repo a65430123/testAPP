@@ -173,7 +173,9 @@
         cursor: pointer;
       }
       .inv-body {
-        width: min(300px, calc(100vw - 24px));
+        width: min(330px, calc(100vw - 24px));
+        max-height: calc(100vh - 80px);
+        overflow-y: auto;
         margin-top: 6px;
         padding: 10px;
         border-radius: 8px;
@@ -206,6 +208,193 @@
       .inv-empty {
         grid-column: 1 / -1;
         color: #8fa399;
+      }
+
+      .inv-hint {
+        margin-bottom: 8px;
+        color: #c8d6ce;
+        font-size: 12px;
+      }
+      .inv-title {
+        margin: 8px 0 4px;
+        color: #9fb4a8;
+        font-size: 12px;
+      }
+      .inv-slot {
+        display: flex;
+        gap: 8px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        color: #8fa399;
+      }
+      .inv-slot.filled {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        cursor: pointer;
+      }
+      .inv-slot.filled:hover {
+        background: rgba(217, 83, 79, 0.3);
+      }
+      .inv-slot-name {
+        width: 54px;
+        color: #9fb4a8;
+      }
+      .inv-item.equipment span:first-child {
+        color: #ffe9a8;
+      }
+      .inv-item.offered {
+        outline: 2px solid #ffd97a;
+      }
+      .inv-item.selected {
+        outline: 2px solid #8fc0ff;
+      }
+
+      /* NPC 視窗與交易視窗 */
+      #npc,
+      #trade {
+        position: fixed;
+        top: 70px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(420px, calc(100vw - 24px));
+        max-height: calc(100vh - 300px);
+        overflow-y: auto;
+        padding: 12px;
+        border: 1px solid #47604f;
+        border-radius: 10px;
+        background: rgba(12, 18, 24, 0.92);
+        color: #fff;
+        font-size: 14px;
+        z-index: 12;
+        box-sizing: border-box;
+      }
+      #npc[hidden],
+      #trade[hidden],
+      #trade-prompt[hidden] {
+        display: none;
+      }
+      .win-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .win-title {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .win-hint {
+        margin-bottom: 8px;
+        color: #b9c7c0;
+        font-size: 12px;
+      }
+      #npc button,
+      #trade button,
+      #trade-prompt button {
+        padding: 4px 10px;
+        border: 1px solid #47604f;
+        border-radius: 6px;
+        background: #18222b;
+        color: #fff;
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      #npc button.primary,
+      #trade button.primary,
+      #trade-prompt button.primary {
+        border: none;
+        background: #5fae6b;
+        color: #0d1a12;
+        font-weight: 700;
+      }
+      #npc button:disabled,
+      #trade button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      #npc .win-close {
+        margin-bottom: 8px;
+      }
+      .shop-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .shop-name {
+        flex: 1;
+      }
+      .shop-price {
+        color: #ffd97a;
+      }
+      .refine-name {
+        font-size: 16px;
+        color: #ffe9a8;
+        margin-bottom: 6px;
+      }
+      .refine-info {
+        margin-bottom: 10px;
+        color: #c8d6ce;
+        white-space: pre-line;
+      }
+      .trade-columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .trade-side {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .trade-head {
+        color: #9fb4a8;
+        font-size: 12px;
+      }
+      .trade-head.confirmed {
+        color: #7dff8a;
+      }
+      .trade-coins {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+        color: #ffd97a;
+      }
+      .trade-coins input {
+        width: 80px;
+        padding: 3px 6px;
+        border: 1px solid #47604f;
+        border-radius: 6px;
+        background: #0e141a;
+        color: #fff;
+        font-family: inherit;
+      }
+      .trade-buttons {
+        display: flex;
+        gap: 8px;
+      }
+      #trade-prompt {
+        position: fixed;
+        top: 70px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border: 1px solid #ffd97a;
+        border-radius: 10px;
+        background: rgba(12, 18, 24, 0.95);
+        color: #fff;
+        font-size: 14px;
+        z-index: 13;
       }
 
       .inv-item.usable {

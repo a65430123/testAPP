@@ -397,7 +397,7 @@ const GID = {
 };
 
 /** 把地面／物件陣列、出生點與傳送點組成 Tiled JSON */
-function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn, portals, monsterSpawns = [] }) {
+function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn, portals, monsterSpawns = [], npcs = [] }) {
   let nextObjectId = 1;
   return {
     compressionlevel: -1,
@@ -411,8 +411,8 @@ function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn,
     type: 'map',
     tilewidth: TILE_W,
     tileheight: TILE_H,
-    nextlayerid: 6,
-    nextobjectid: 2 + portals.length + monsterSpawns.length,
+    nextlayerid: 7,
+    nextobjectid: 2 + portals.length + monsterSpawns.length + npcs.length,
     properties: [
       { name: 'displayName', type: 'string', value: displayName },
       { name: 'mapId', type: 'string', value: mapId },
@@ -494,6 +494,29 @@ function makeTiledMap({ mapId, displayName, width, height, ground, props, spawn,
             { name: 'count', type: 'int', value: m.count },
             { name: 'monsterId', type: 'string', value: m.monsterId },
           ],
+        })),
+      },
+      {
+        id: 6,
+        name: 'npcs',
+        type: 'objectgroup',
+        draworder: 'topdown',
+        x: 0,
+        y: 0,
+        opacity: 1,
+        visible: true,
+        objects: npcs.map((n) => ({
+          id: nextObjectId++,
+          name: n.npcId,
+          type: 'npc',
+          point: true,
+          rotation: 0,
+          visible: true,
+          x: (n.x + 0.5) * TILE_H,
+          y: (n.y + 0.5) * TILE_H,
+          width: 0,
+          height: 0,
+          properties: [{ name: 'npcId', type: 'string', value: n.npcId }],
         })),
       },
     ],
@@ -658,6 +681,12 @@ function buildC01() {
     props,
     spawn,
     portals: [{ name: 'to_F01', x: 14, y: 28, width: 2, height: 1, targetMap: 'F01', targetX: 20, targetY: 3 }],
+    // 廣場上的三位 NPC：雜貨商、鍛造師、倉庫管理員
+    npcs: [
+      { npcId: 'c01_grocer', x: 12, y: 12 },
+      { npcId: 'c01_smith', x: 18, y: 12 },
+      { npcId: 'c01_storage', x: 15, y: 11 },
+    ],
   });
 }
 

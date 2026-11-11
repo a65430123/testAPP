@@ -293,3 +293,27 @@ export function findMonsterSpawns(map: TiledMap): MonsterSpawnArea[] {
   }
   return areas;
 }
+
+/** NPC 在地圖上的位置 */
+export interface NpcPlacement {
+  /** 對應 shared/data/npcs.json 的 id */
+  npcId: string;
+  /** 位置（格座標，浮點數） */
+  x: number;
+  y: number;
+}
+
+/** 解析 npcs 物件層。每個點物件需要自訂屬性 npcId（字串）。 */
+export function findNpcs(map: TiledMap): NpcPlacement[] {
+  const layer = getObjectLayer(map, MAP_LAYER.npcs);
+  if (!layer) {
+    return [];
+  }
+  return layer.objects.map((obj) => {
+    const npcId = obj.properties?.find((p) => p.name === 'npcId')?.value;
+    if (typeof npcId !== 'string') {
+      throw new Error(`NPC 物件「${obj.name}」缺少 npcId 屬性`);
+    }
+    return { npcId, x: obj.x / map.tileheight, y: obj.y / map.tileheight };
+  });
+}

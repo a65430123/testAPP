@@ -2,7 +2,6 @@
 
 import { Room, ServerError, type Client } from 'colyseus';
 import {
-  addItemToInventory,
   advanceMove,
   allocateStat,
   applyExp,
@@ -32,9 +31,10 @@ import {
   PLAYER_MOVE_SPEED,
   portalAt,
   REGEN_INTERVAL_MS,
-  removeFromSlot,
   REVIVE_DELAY_MS,
   rollAttack,
+  maxCardSlots,
+  rollCardSlots,
   ROOM_MAX_CLIENTS,
   sanitizeChatText,
   SERVER_TICK_MS,
@@ -43,13 +43,11 @@ import {
   type AttackOptions,
   type ChatChannel,
   type ChatMessage,
-  type ClassDef,
   type CombatEvent,
   type InventoryMessage,
+  type ItemDef,
   type JoinMapOptions,
   type MoveRejectMessage,
-  type MoveState,
-  type PlayerCombatStats,
   type Point,
   type SelfMessage,
   type SystemMessage,
@@ -58,9 +56,12 @@ import {
 import { verifyToken } from '../auth';
 import { config } from '../config';
 import { loadCharacter, saveCharacter, type CharacterRecord } from '../db/characters';
+import { ItemController, type ItemHost } from '../game/ItemController';
 import { MonsterManager, type AiTarget, type Monster, type MonsterHost } from '../game/MonsterManager';
+import { TradeController, type TradeHost } from '../game/TradeController';
 import { getMap, type GameMap } from '../maps';
 import { clearOnline, getOnline, setOnline, type OnlineEntry } from '../online';
+import type { PlayerRuntime } from './runtime';
 import { DropState, MapState, PlayerState } from './schema';
 
 /** 世界頻道在各房間之間轉送用的主題名稱 */
@@ -76,44 +77,6 @@ const CHASE_REPATH_MS = 300;
 /** 踢掉舊連線時，最多等它的離線存檔多久（毫秒） */
 const KICK_WAIT_MS = 5000;
 
-/** 每位玩家只存在伺服器、不同步給用戶端的資料 */
-interface PlayerRuntime {
-  /** 角色資料（記憶體中的最新狀態，存檔時寫回資料庫） */
-  record: CharacterRecord;
-  client: Client;
-  state: PlayerState;
-  move: MoveState;
-  cls: ClassDef;
-  /** 由等級與素質算出的戰鬥數值；升級或配點後重新計算 */
-  combat: PlayerCombatStats;
-  /** 目前鎖定的攻擊目標（魔物的鍵） */
-  targetKey: string | null;
-  nextAttackAt: number;
-  nextChaseRepathAt: number;
-  /** 各技能可再次使用的時間 */
-  cooldowns: Map<string, number>;
-  dead: boolean;
-  reviveAt: number;
-  nextRegenAt: number;
-  lastMoveAt: number;
-  lastChatAt: number;
-  lastActionAt: number;
-  lastInventoryRequestAt: number;
-  /** 位置、等級等資料自上次存檔後有變動 */
-  dirty: boolean;
-  /** 背包自上次存檔後有變動 */
-  inventoryDirty: boolean;
-  /** 個人數值有變動，這個 tick 結束時要傳給本人 */
-  selfDirty: boolean;
-  /** 已踩到傳送點、正在等用戶端換房間 */
-  transferring: boolean;
-  /** 傳送時已經存過檔，離開房間時不必再存 */
-  savedForTransfer: boolean;
-  online: OnlineEntry;
-  /** 離線存檔完成時呼叫，讓等待中的新連線繼續 */
-  resolveLeft: () => void;
-}
-
 /** 地上掉落物只存在伺服器的資料 */
 interface DropRuntime {
   ownerUntil: number;
@@ -124,13 +87,15 @@ function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
+export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, ItemHost, TradeHost {
   override maxClients = ROOM_MAX_CLIENTS;
   override patchRate = SERVER_TICK_MS;
   override state = new MapState();
 
   map!: GameMap;
   private monsters!: MonsterManager;
+  private items!: ItemController;
+  private trade!: TradeController;
   private readonly runtimes = new Map<string, PlayerRuntime>();
   private readonly drops = new Map<string, DropRuntime>();
   private nextDropId = 1;
@@ -147,12 +112,28 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     this.state.mapId = map.id;
     this.monsters = new MonsterManager(this);
     this.monsters.spawnAll(Date.now());
+    this.items = new ItemController(this);
+    this.trade = new TradeController(this, this.items);
 
     this.onMessage(MSG.move, (client, message: unknown) => this.handleMove(client, message));
     this.onMessage(MSG.attack, (client, message: unknown) => this.handleAttack(client, message));
     this.onMessage(MSG.skill, (client, message: unknown) => this.handleSkill(client, message));
     this.onMessage(MSG.pickup, (client, message: unknown) => this.handlePickup(client, message));
-    this.onMessage(MSG.useItem, (client, message: unknown) => this.handleUseItem(client, message));
+    this.onMessage(MSG.useItem, (client, message: unknown) => this.items.handleUseItem(client, message));
+    this.onMessage(MSG.equip, (client, message: unknown) => this.items.handleEquip(client, message));
+    this.onMessage(MSG.unequip, (client, message: unknown) => this.items.handleUnequip(client, message));
+    this.onMessage(MSG.shopBuy, (client, message: unknown) => this.items.handleShopBuy(client, message));
+    this.onMessage(MSG.shopSell, (client, message: unknown) => this.items.handleShopSell(client, message));
+    this.onMessage(MSG.refine, (client, message: unknown) => this.items.handleRefine(client, message));
+    this.onMessage(MSG.cardInsert, (client, message: unknown) => this.items.handleCardInsert(client, message));
+    this.onMessage(MSG.storageOpen, (client, message: unknown) => this.items.handleStorageOpen(client, message));
+    this.onMessage(MSG.storageDeposit, (client, message: unknown) => this.items.handleStorageDeposit(client, message));
+    this.onMessage(MSG.storageWithdraw, (client, message: unknown) => this.items.handleStorageWithdraw(client, message));
+    this.onMessage(MSG.tradeRequest, (client, message: unknown) => this.trade.handleRequest(client, message));
+    this.onMessage(MSG.tradeRespond, (client, message: unknown) => this.trade.handleRespond(client, message));
+    this.onMessage(MSG.tradeOffer, (client, message: unknown) => this.trade.handleOffer(client, message));
+    this.onMessage(MSG.tradeConfirm, (client) => this.trade.handleConfirm(client));
+    this.onMessage(MSG.tradeCancel, (client) => this.trade.handleCancel(client));
     this.onMessage(MSG.allocStat, (client, message: unknown) => this.handleAllocStat(client, message));
     this.onMessage(MSG.chat, (client, message: unknown) => this.handleChat(client, message));
     this.onMessage(MSG.inventory, (client) => this.handleInventoryRequest(client));
@@ -200,7 +181,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       throw new ServerError(409, '此帳號已有角色在線上');
     }
     const cls = getClassDef(record.classId)!;
-    const combat = computePlayerCombatStats(cls, record.level, record.stats);
+    const combat = computePlayerCombatStats(cls, record.level, record.stats, record.equipment);
 
     // 存檔位置若已不可站立（例如地圖改版），退回預設出生點
     let dirty = false;
@@ -262,10 +243,11 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       lastActionAt: 0,
       lastInventoryRequestAt: 0,
       dirty,
-      inventoryDirty: false,
       selfDirty: false,
       transferring: false,
       savedForTransfer: false,
+      storage: null,
+      itemQueue: Promise.resolve(),
       online,
       resolveLeft,
     });
@@ -282,13 +264,16 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.monsters.forgetTarget(client.sessionId);
+    this.trade.onPlayerGone(client.sessionId);
     try {
+      // 等還在進行中的道具操作（例如正在寫入的交易）結束，再做最後一次存檔
+      await runtime.itemQueue.catch(() => undefined);
       if (!runtime.savedForTransfer) {
         // 倒地時離線：直接以復活後的狀態存檔，下次上線不會卡在倒地
         if (runtime.dead) {
           this.applyReviveToRecord(runtime);
         }
-        await saveCharacter(runtime.record, true);
+        await saveCharacter(runtime.record);
       }
     } catch (err) {
       console.error(`[room ${this.map.id}] 角色 ${runtime.record.name} 離線存檔失敗：`, err);
@@ -353,23 +338,61 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
 
   // ------------------------------------------------------------ 存檔
 
-  /** 定時存檔：只寫入自上次存檔後有變動的角色 */
+  /** 定時存檔：只寫入自上次存檔後有變動的角色（道具不在這裡存，它們在異動時就已即時寫入） */
   private autosave(): void {
     for (const runtime of this.runtimes.values()) {
-      if (runtime.transferring || (!runtime.dirty && !runtime.inventoryDirty)) {
+      if (runtime.transferring || !runtime.dirty) {
         continue;
       }
-      const withInventory = runtime.inventoryDirty;
       // 先清除旗標：存檔期間若又有變動，會重新被標記，下一輪再存
       runtime.dirty = false;
-      runtime.inventoryDirty = false;
-      saveCharacter(runtime.record, withInventory).catch((err: unknown) => {
-        // 失敗就把旗標設回來，下一輪重試
-        runtime.dirty = true;
-        runtime.inventoryDirty = runtime.inventoryDirty || withInventory;
+      saveCharacter(runtime.record).catch((err: unknown) => {
+        runtime.dirty = true; // 失敗就下一輪重試
         console.error(`[room ${this.map.id}] 角色 ${runtime.record.name} 定時存檔失敗：`, err);
       });
     }
+  }
+
+  // ------------------------------------------------------------ ItemHost／TradeHost：提供給道具與交易控制器
+
+  getRuntime(sessionId: string): PlayerRuntime | undefined {
+    return this.runtimes.get(sessionId);
+  }
+
+  /** 玩家是否還在這個房間且沒有在切換地圖 */
+  isActive(runtime: PlayerRuntime): boolean {
+    return this.runtimes.get(runtime.client.sessionId) === runtime && !runtime.transferring;
+  }
+
+  consumableUseful(runtime: PlayerRuntime, def: ItemDef): boolean {
+    const { record, combat } = runtime;
+    return (
+      ((def.effect?.hp ?? 0) > 0 && record.hp < combat.maxHp) ||
+      ((def.effect?.sp ?? 0) > 0 && record.sp < combat.maxSp)
+    );
+  }
+
+  /** 套用消耗品的效果（目前只有回復 HP／SP） */
+  applyConsumable(runtime: PlayerRuntime, def: ItemDef): void {
+    const { record, client } = runtime;
+    const hpGain = def.effect?.hp ?? 0;
+    const spGain = def.effect?.sp ?? 0;
+    if (hpGain > 0 && !runtime.dead) {
+      const before = record.hp;
+      this.setHp(runtime, record.hp + hpGain);
+      this.broadcastCombat({
+        type: 'heal',
+        sourceId: client.sessionId,
+        targetId: client.sessionId,
+        amount: record.hp - before,
+        crit: false,
+      });
+    }
+    if (spGain > 0) {
+      record.sp = Math.min(runtime.combat.maxSp, record.sp + spGain);
+    }
+    runtime.dirty = true;
+    runtime.selfDirty = true;
   }
 
   // ------------------------------------------------------------ 訊息處理：移動
@@ -410,7 +433,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
   // ------------------------------------------------------------ 訊息處理：戰鬥
 
   /** 取得可以行動的玩家（存在、沒倒地、沒在傳送，且沒有送太快） */
-  private actingPlayer(client: Client): PlayerRuntime | null {
+  actingPlayer(client: Client): PlayerRuntime | null {
     const runtime = this.runtimes.get(client.sessionId);
     if (!runtime || runtime.dead || runtime.transferring) {
       return null;
@@ -569,9 +592,11 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       const [min, max] = def.coins;
       const coins = min + Math.floor(Math.random() * (max - min + 1));
       if (coins > 0) {
+        // 打怪的星幣先記在記憶體，定時存檔時再加進資料庫
         owner.record.coins += coins;
+        owner.record.unsavedCoins += coins;
         owner.dirty = true;
-        this.sendInventory(owner.client, owner.record);
+        this.sendInventory(owner);
       }
     }
     for (const drop of def.drops) {
@@ -585,6 +610,9 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       state.x = monster.move.x + (Math.random() - 0.5) * 0.6;
       state.y = monster.move.y + (Math.random() - 0.5) * 0.6;
       state.owner = owner ? ownerId : '';
+      // 裝備掉落時隨機決定卡槽數
+      const equipType = getItemDef(drop.itemId)?.equip?.type;
+      state.cardSlots = equipType ? rollCardSlots(equipType, Math.random) : 0;
       const key = `d${this.nextDropId++}`;
       this.state.drops.set(key, state);
       this.drops.set(key, { ownerUntil: now + DROP_OWNER_MS, expireAt: now + DROP_LIFETIME_MS });
@@ -612,10 +640,10 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     }
   }
 
-  /** 等級或素質改變後重新計算戰鬥數值 */
-  private refreshCombat(runtime: PlayerRuntime): void {
+  /** 等級、素質或裝備改變後重新計算戰鬥數值 */
+  refreshCombat(runtime: PlayerRuntime): void {
     const { record, state } = runtime;
-    runtime.combat = computePlayerCombatStats(runtime.cls, record.level, record.stats);
+    runtime.combat = computePlayerCombatStats(runtime.cls, record.level, record.stats, record.equipment);
     state.maxHp = runtime.combat.maxHp;
     record.sp = Math.min(record.sp, runtime.combat.maxSp);
     this.setHp(runtime, Math.min(record.hp, runtime.combat.maxHp));
@@ -638,6 +666,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     runtime.targetKey = null;
     runtime.move.path = [];
     this.monsters.forgetTarget(client.sessionId);
+    this.trade.onPlayerGone(client.sessionId);
 
     // 死亡懲罰：損失升級所需經驗的 1%（低等級不罰，且不會降級）
     let lost = 0;
@@ -701,59 +730,26 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       this.sendSystemTo(client, '這個掉落物暫時只有擊倒魔物的人能撿');
       return;
     }
-    if (!addItemToInventory(runtime.record.inventory, state.itemId, state.quantity)) {
-      this.sendSystemTo(client, '背包已滿');
-      return;
-    }
+    // 先把掉落物從地上拿走，再寫入背包：兩個人同時撿同一個掉落物時，只有先到的人拿得到
     this.state.drops.delete(dropId);
     this.drops.delete(dropId);
-    runtime.inventoryDirty = true;
-    this.sendInventory(client, runtime.record);
-    this.sendSystemTo(client, `取得 ${getItemDef(state.itemId)?.name ?? state.itemId} ×${state.quantity}`);
-  }
-
-  /** 使用背包中的消耗品（目前只有回復 HP／SP 的效果） */
-  private handleUseItem(client: Client, message: unknown): void {
-    const runtime = this.actingPlayer(client);
-    if (!runtime) {
-      return;
-    }
-    const slot = (message as { slot?: unknown } | null)?.slot;
-    const { record } = runtime;
-    const item = record.inventory.find((i) => i.slot === slot);
-    const def = item ? getItemDef(item.itemId) : undefined;
-    if (!item || !def || def.type !== 'consumable' || !def.effect) {
-      return;
-    }
-    const hpGain = def.effect.hp ?? 0;
-    const spGain = def.effect.sp ?? 0;
-    const useful =
-      (hpGain > 0 && record.hp < runtime.combat.maxHp) || (spGain > 0 && record.sp < runtime.combat.maxSp);
-    if (!useful) {
-      this.sendSystemTo(client, '現在不需要使用');
-      return;
-    }
-    if (!removeFromSlot(record.inventory, item.slot, 1)) {
-      return;
-    }
-    if (hpGain > 0) {
-      const before = record.hp;
-      this.setHp(runtime, record.hp + hpGain);
-      this.broadcastCombat({
-        type: 'heal',
-        sourceId: client.sessionId,
-        targetId: client.sessionId,
-        amount: record.hp - before,
-        crit: false,
-      });
-    }
-    if (spGain > 0) {
-      record.sp = Math.min(runtime.combat.maxSp, record.sp + spGain);
-    }
-    runtime.dirty = true;
-    runtime.selfDirty = true;
-    runtime.inventoryDirty = true;
-    this.sendInventory(client, record);
+    const item = { itemId: state.itemId, quantity: state.quantity, cardSlots: state.cardSlots };
+    void this.items.grant(runtime, item, 'pickup').then((ok) => {
+      if (ok) {
+        this.sendSystemTo(client, `取得 ${getItemDef(item.itemId)?.name ?? item.itemId} ×${item.quantity}`);
+        return;
+      }
+      // 背包滿了或寫入失敗：把掉落物放回地上
+      const restored = new DropState();
+      restored.itemId = item.itemId;
+      restored.quantity = item.quantity;
+      restored.cardSlots = item.cardSlots;
+      restored.x = state.x;
+      restored.y = state.y;
+      restored.owner = state.owner;
+      this.state.drops.set(dropId, restored);
+      this.drops.set(dropId, drop);
+    });
   }
 
   /** 素質配點：一次加 1，花費由伺服器計算 */
@@ -829,14 +825,15 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       return;
     }
     runtime.lastInventoryRequestAt = now;
-    this.sendInventory(client, runtime.record);
+    this.sendInventory(runtime);
     this.sendSelf(runtime);
   }
 
   /**
    * 開發與測試用的 GM 指令：
    *   /gm level <等級>           設定等級（素質點依等級重新給予）
-   *   /gm item <道具代號> [數量]  取得道具
+   *   /gm item <道具代號> [數量] [卡槽數]  取得道具
+   *   /gm coins <數值>           增減星幣
    *   /gm exp <數值>             獲得經驗值（會觸發升級）
    *   /gm hp <數值>              設定目前 HP
    */
@@ -860,6 +857,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     if (name === 'item') {
       const def = getItemDef(args[0] ?? '');
       const quantity = args[1] === undefined ? 1 : Number(args[1]);
+      const cardSlots = args[2] === undefined ? 0 : Number(args[2]);
       if (!def) {
         this.sendSystemTo(client, `沒有這個道具：${args[0] ?? ''}`);
         return;
@@ -868,13 +866,24 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
         this.sendSystemTo(client, '數量需為 1–999 的整數');
         return;
       }
-      if (!addItemToInventory(record.inventory, def.id, quantity)) {
-        this.sendSystemTo(client, '背包放不下');
+      if (!Number.isInteger(cardSlots) || cardSlots < 0 || cardSlots > (def.equip ? maxCardSlots(def.equip.type) : 0)) {
+        this.sendSystemTo(client, '卡槽數不合法');
         return;
       }
-      runtime.inventoryDirty = true;
-      this.sendInventory(client, record);
-      this.sendSystemTo(client, `取得 ${def.name} ×${quantity}`);
+      void this.items.grant(runtime, { itemId: def.id, quantity, cardSlots }, 'gm').then((ok) => {
+        if (ok) {
+          this.sendSystemTo(client, `取得 ${def.name} ×${quantity}`);
+        }
+      });
+      return;
+    }
+    if (name === 'coins') {
+      const amount = Number(args[0]);
+      if (!Number.isInteger(amount) || amount === 0 || record.coins + amount < 0) {
+        this.sendSystemTo(client, '星幣數量不合法');
+        return;
+      }
+      this.items.gmCoins(runtime, amount);
       return;
     }
     if (name === 'exp') {
@@ -897,7 +906,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       this.sendSystemTo(client, `HP 已設為 ${record.hp}`);
       return;
     }
-    this.sendSystemTo(client, '可用指令：/gm level <等級>、/gm exp <數值>、/gm item <道具代號> [數量]、/gm hp <數值>');
+    this.sendSystemTo(client, '可用指令：/gm level <等級>、/gm exp <數值>、/gm item <道具代號> [數量] [卡槽數]、/gm coins <數值>、/gm hp <數值>');
   }
 
   // ------------------------------------------------------------ 模擬
@@ -944,10 +953,11 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     runtime.nextRegenAt = now + REGEN_INTERVAL_MS;
     const { record, combat } = runtime;
     if (record.hp < combat.maxHp) {
-      this.setHp(runtime, record.hp + Math.floor(combat.maxHp * 0.005) + Math.floor(record.stats.con / 5));
+      const base = Math.floor(combat.maxHp * 0.005) + Math.floor(combat.totalStats.con / 5);
+      this.setHp(runtime, record.hp + Math.floor(base * (1 + combat.hpRegenPct / 100)));
     }
     if (record.sp < combat.maxSp) {
-      const gain = Math.floor(combat.maxSp * 0.01) + Math.floor(record.stats.mnd / 6);
+      const gain = Math.floor(combat.maxSp * 0.01) + Math.floor(combat.totalStats.mnd / 6);
       record.sp = Math.min(combat.maxSp, record.sp + Math.max(1, gain));
       runtime.dirty = true;
       runtime.selfDirty = true;
@@ -1018,12 +1028,15 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     runtime.targetKey = null;
     runtime.move.path = [];
     this.monsters.forgetTarget(client.sessionId);
+    this.trade.onPlayerGone(client.sessionId);
     record.mapId = mapId;
     record.x = tileX + 0.5;
     record.y = tileY + 0.5;
 
     try {
-      await saveCharacter(record, true);
+      // 等進行中的道具操作結束再存檔，新房間載入時才會讀到完整的資料
+      await runtime.itemQueue.catch(() => undefined);
+      await saveCharacter(record);
     } catch (err) {
       // 存檔失敗就取消傳送，角色留在原地
       console.error(`[room ${this.map.id}] 角色 ${record.name} 傳送存檔失敗：`, err);
@@ -1039,7 +1052,6 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     }
     runtime.savedForTransfer = true;
     runtime.dirty = false;
-    runtime.inventoryDirty = false;
 
     const transfer: TransferMessage = { mapId };
     client.send(MSG.transfer, transfer);
@@ -1053,10 +1065,11 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
 
   // ------------------------------------------------------------ 傳送訊息
 
-  /** 把背包內容傳給本人（背包是私人資料，不放在同步狀態裡） */
-  private sendInventory(client: Client, record: CharacterRecord): void {
-    const message: InventoryMessage = { items: record.inventory, coins: record.coins };
-    client.send(MSG.inventory, message);
+  /** 把背包、裝備與星幣傳給本人（這些是私人資料，不放在同步狀態裡） */
+  sendInventory(runtime: PlayerRuntime): void {
+    const { record } = runtime;
+    const message: InventoryMessage = { items: record.inventory, equipment: record.equipment, coins: record.coins };
+    runtime.client.send(MSG.inventory, message);
   }
 
   /** 把個人數值傳給本人 */
@@ -1073,6 +1086,14 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
       maxSp: combat.maxSp,
       statPoints: record.statPoints,
       stats: { ...record.stats },
+      atk: combat.atk,
+      matk: combat.matk,
+      def: combat.def,
+      mdef: combat.mdef,
+      hit: combat.hit,
+      eva: combat.eva,
+      crit: combat.crit,
+      attackIntervalMs: combat.attackIntervalMs,
     };
     runtime.client.send(MSG.self, message);
   }
@@ -1086,7 +1107,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost {
     this.broadcast(MSG.system, message, except ? { except } : undefined);
   }
 
-  private sendSystemTo(client: Client, text: string): void {
+  sendSystemTo(client: Client, text: string): void {
     const message: SystemMessage = { text };
     client.send(MSG.system, message);
   }
