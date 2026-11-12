@@ -25,7 +25,9 @@
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "check:content": "npm run check:content -w @starmemory/server",
     "admin:grant": "npm run admin:grant -w @starmemory/server --",
-    "loadtest": "npm run loadtest -w @starmemory/server"
+    "loadtest": "npm run loadtest -w @starmemory/server",
+    "play": "npm run build && npm run server",
+    "play:docker": "docker compose -f docker-compose.play.yml up --build"
   },
   "engines": {
     "node": ">=20"

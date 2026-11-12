@@ -2,6 +2,46 @@
 
 2D 網頁多人線上 RPG。設計文件見 [`docs/GDD.md`](docs/GDD.md)；新增地圖、魔物、任務的做法見 [`docs/CONTENT.md`](docs/CONTENT.md)。
 
+## 快速試玩
+
+想先玩玩看，不必分別啟動資料庫、伺服器與用戶端。兩種方式擇一，啟動後瀏覽器開 <http://localhost:2567>，註冊帳號、建立角色就能玩；管理後台在 <http://localhost:2567/admin.html>。
+
+**方式一：Docker（只需要安裝 Docker）**
+
+```bash
+docker compose -f docker-compose.play.yml up --build
+```
+
+第一次會花幾分鐘下載與建置。停止按 Ctrl+C，存檔會保留；要連存檔一起清掉：
+
+```bash
+docker compose -f docker-compose.play.yml down -v
+```
+
+**方式二：不用 Docker（需要 Node.js 20.12 以上與 PostgreSQL）**
+
+先建立資料庫並把連線字串寫進 `server/.env`（見下方「啟動方式」），然後：
+
+```bash
+npm install
+```
+
+```bash
+npm run play
+```
+
+這會打包用戶端，再由遊戲伺服器同時提供網頁、API 與遊戲連線。
+
+**試玩提示**
+
+- 點地面移動、點魔物攻擊、點掉落物撿取、點 NPC 交談、點其他玩家可交易／組隊／加好友。
+- 廣場上的旅團嚮導有第一個任務；南邊的紫色格子通往嫩芽草原，廣場東南角通往鼠尾地窖（很危險）。
+- 開兩個瀏覽器（或一個一般視窗加一個無痕視窗）用不同帳號登入，可以試組隊與交易。同一個區域網路的其他裝置可以連 `http://你的電腦IP:2567`。
+- Docker 試玩版開著 GM 指令，在聊天輸入即可：`/gm level 20`、`/gm coins 10000`、`/gm item novice_tunic 1 1`；攻擊魔物後輸入 `/gm slay` 直接擊倒。
+- 要進後台，先註冊帳號，再把它設成管理員：`docker compose -f docker-compose.play.yml exec game npm run admin:grant -- 你的帳號 admin`（不用 Docker 時是 `npm run admin:grant -- 你的帳號 admin`）。
+
+試玩版的設定（固定金鑰、開著 GM 指令、沒有 HTTPS）**只適合在自己的電腦或區域網路使用**，不要拿來對外營運。
+
 ## 目前進度
 
 - [x] 階段 0：遊戲設計文件
@@ -95,6 +135,8 @@ npm run dev
 
 | 指令 | 用途 |
 |---|---|
+| `npm run play` | 打包用戶端並啟動伺服器，單一網址 <http://localhost:2567> 即可玩 |
+| `npm run play:docker` | 用 Docker 啟動試玩版（含資料庫） |
 | `npm run dev:server`／`npm run dev:client` | 分別啟動伺服器或用戶端 |
 | `npm run server` | 啟動伺服器（不自動重載） |
 | `npm run migrate` | 只執行資料庫 migration |
@@ -121,6 +163,7 @@ npm run dev
 | `AUTO_MIGRATE` | 啟動時自動套用 migration | `true` |
 | `ENABLE_GM_COMMANDS` | 開啟 GM 聊天指令（僅供開發測試） | `false` |
 | `TRUST_PROXY` | 伺服器在反向代理後方時設為 `true` | `false` |
+| `SERVE_CLIENT` | 由伺服器直接提供用戶端網頁（`client/dist` 存在時） | `true` |
 | `BOSS_RESPAWN_SCALE` | 首領重生時間的倍率（測試用，例如 `0.006`） | `1` |
 | `AUTH_RATE_LIMIT` | 註冊與登入：同一 IP 每分鐘最多嘗試次數 | `20` |
 | `LOG_FORMAT` | `json` 時每行一個 JSON，否則是文字格式 | `text` |
@@ -128,7 +171,7 @@ npm run dev
 | `ALERT_WEBHOOK_URL` | 嚴重警示要 POST 到的網址（Slack、Discord 的 Webhook 都可以） | （不發送） |
 | `ECONOMY_WINDOW_SEC` | 星幣收入監控的統計區間（秒） | `600` |
 
-用戶端環境變數：`VITE_SERVER_URL`（遊戲伺服器位址，預設為目前網域的 2567 埠）。
+用戶端環境變數：`VITE_SERVER_URL`（遊戲伺服器位址）。未設定時，開發模式（5173 埠）連到同網域的 2567 埠，其他情況連到網頁本身的網址。
 
 ## 帳號、角色與存檔
 

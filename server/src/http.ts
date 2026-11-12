@@ -1,5 +1,7 @@
 // HTTP API：註冊、登入、角色列表、建立角色
 
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import {
   getClassDef,
@@ -37,6 +39,9 @@ import { recordLoginFailure } from './security';
 import { hub } from './social/hub';
 import { log } from './log';
 
+
+/** 用戶端打包結果的位置（npm run build 產生） */
+const CLIENT_DIST = fileURLToPath(new URL('../../client/dist/', import.meta.url));
 
 function sendError(res: Response, status: number, error: string): void {
   const body: ErrorResponse = { error };
@@ -229,6 +234,13 @@ export function registerRoutes(app: Application): void {
   });
 
   registerAdminRoutes(app);
+
+  // 用戶端打包後的檔案存在時，由伺服器直接提供網頁（試玩與小規模部署用，只需要開一個連接埠）。
+  // 正式環境若由 Nginx 提供靜態檔，可設 SERVE_CLIENT=false 關閉。
+  if (config.serveClient && existsSync(CLIENT_DIST)) {
+    app.use(express.static(CLIENT_DIST, { maxAge: '1h', index: 'index.html' }));
+    log.info(`[http] 由伺服器提供用戶端網頁：${CLIENT_DIST}`);
+  }
 
   // 未預期的錯誤：記錄在伺服器，不把內部細節回傳給用戶端
   app.use('/api', (err: unknown, _req: Request, res: Response, _next: NextFunction) => {

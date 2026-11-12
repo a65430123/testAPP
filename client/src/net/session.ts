@@ -85,7 +85,10 @@ export class ApiError extends Error {
 }
 
 export const SERVER_URL: string =
-  import.meta.env.VITE_SERVER_URL ?? `${location.protocol}//${location.hostname}:${DEFAULT_SERVER_PORT}`;
+  // 開發時用戶端在 5173 埠、伺服器在 2567 埠；其他情況（伺服器自己提供網頁，或前面有 Nginx）
+  // 網頁與伺服器是同一個網址，直接用目前的來源
+  import.meta.env.VITE_SERVER_URL ??
+  (location.port === '5173' ? `${location.protocol}//${location.hostname}:${DEFAULT_SERVER_PORT}` : location.origin);
 
 const client = new Client(SERVER_URL);
 

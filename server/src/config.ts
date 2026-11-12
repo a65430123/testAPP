@@ -45,6 +45,8 @@ export const config = {
   autoMigrate: bool(process.env.AUTO_MIGRATE, true),
   gmCommands: bool(process.env.ENABLE_GM_COMMANDS, false),
   trustProxy: bool(process.env.TRUST_PROXY, false),
+  /** 是否由伺服器直接提供用戶端網頁（client/dist 存在時） */
+  serveClient: bool(process.env.SERVE_CLIENT, true),
   /** 註冊與登入：同一 IP 每分鐘最多嘗試次數 */
   authRateLimit: Math.max(1, int(process.env.AUTH_RATE_LIMIT, 20)),
   /** 嚴重警示要 POST 到哪個網址（Slack、Discord 的 Webhook 都可以）；空字串表示不發送 */

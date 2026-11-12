@@ -1,0 +1,40 @@
+# 試玩版：一個指令啟動資料庫與遊戲，瀏覽器開 http://localhost:2567 就能玩。
+#   啟動：docker compose -f docker-compose.play.yml up --build
+#   停止：Ctrl+C；要連存檔一起清掉：docker compose -f docker-compose.play.yml down -v
+#
+# 這份設定只適合在自己的電腦或區域網路試玩：GM 指令是開著的、金鑰是固定的、沒有 HTTPS。
+# 不要拿來對外營運。
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: starmemory
+      POSTGRES_PASSWORD: starmemory
+      POSTGRES_DB: starmemory
+    volumes:
+      - starmemory_play_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U starmemory']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  game:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://starmemory:starmemory@postgres:5432/starmemory
+      # 試玩用的固定金鑰；對外營運務必換成自己的亂數
+      JWT_SECRET: play-only-secret-change-me-before-going-public
+      # 開著才能用 /gm 指令快速體驗後面的內容（例如 /gm level 20）
+      ENABLE_GM_COMMANDS: 'true'
+      # 首領 30 分鐘重生改成約 3 分鐘，試玩時比較容易遇到
+      BOSS_RESPAWN_SCALE: '0.1'
+    ports:
+      - '2567:2567'
+    restart: unless-stopped
+
+volumes:
+  starmemory_play_pgdata:
