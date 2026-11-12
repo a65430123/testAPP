@@ -32,7 +32,9 @@ import {
 import { registerAdminRoutes } from './admin/routes';
 import { getAccountStatus } from './db/admin';
 import { getMap } from './maps';
+import { loopLag } from './metrics';
 import { recordLoginFailure } from './security';
+import { hub } from './social/hub';
 import { log } from './log';
 
 
@@ -217,8 +219,13 @@ export function registerRoutes(app: Application): void {
     }
   });
 
+  // 健康檢查：給負載平衡器、監控與壓力測試使用
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true });
+    let online = 0;
+    for (const _entry of hub.values()) {
+      online++;
+    }
+    res.json({ ok: true, online, uptimeSec: Math.floor(process.uptime()), loopLag: loopLag() });
   });
 
   registerAdminRoutes(app);

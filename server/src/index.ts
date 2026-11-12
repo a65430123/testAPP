@@ -1,6 +1,6 @@
 // 伺服器進入點：HTTP API + Colyseus 地圖房間
 
-import { Server } from 'colyseus';
+import { matchMaker, Server } from 'colyseus';
 import { MONSTERS, QUESTS, ROOM_MAP, SKILLS, validateGameData, validateQuests } from '@starmemory/shared';
 import { config } from './config';
 import { runMigrations } from './db/migrate';
@@ -61,6 +61,11 @@ process.on('uncaughtException', (err) => {
 });
 
 await gameServer.listen(config.port);
+
+// 單機時房間之間的訊息轉送（世界頻道、公告）用的是 Node 內建的事件機制，預設同一個主題超過 10 個
+// 監聽者就會印警告。每個地圖房間（含分流）都會訂閱這些主題，房間一多就會超過，所以取消這個上限。
+const localSubscriptions = (matchMaker.presence as { subscriptions?: { setMaxListeners(n: number): void } }).subscriptions;
+localSubscriptions?.setMaxListeners(0);
 log.info(`[server] 已啟動，連接埠 ${config.port}`);
 log.info(`[server] 已載入資料表：魔物 ${MONSTERS.length} 種、技能 ${SKILLS.length} 個、任務 ${QUESTS.length} 個`);
 log.info(`[server] 已載入地圖：${allMaps().map((m) => `${m.id} ${m.displayName}`).join('、')}`);

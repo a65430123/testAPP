@@ -12,7 +12,20 @@
 - [x] 階段 5：背包、裝備欄、精煉、卡片鑲嵌、NPC 商店、玩家交易、倉庫；道具異動即時寫入並留下紀錄
 - [x] 階段 6：組隊與經驗分配、公會、好友、NPC 對話與任務、首領定時重生、內容製作流程
 - [x] 階段 7：GM 管理後台、伺服器端防外掛、日誌與異常警示
-- [ ] 之後：更多地圖與魔物、Redis、部署……
+- [x] 階段 8：營運規劃文件（付費與金流、活動排程、客服流程、條款與隱私權草稿、開服清單）與壓力測試腳本
+- [ ] 之後：部署（Docker Compose、Nginx、HTTPS）、帳號功能補強、商城與金流實作、活動排程實作、更多內容與正式美術
+
+## 營運文件
+
+| 文件 | 內容 | 狀態 |
+|---|---|---|
+| [`docs/ops/MONETIZATION.md`](docs/ops/MONETIZATION.md) | 付費原則、商城商品、星鑽帳務、台灣金流比較與串接流程、退款、法規重點 | 規劃，尚未實作 |
+| [`docs/ops/EVENTS.md`](docs/ops/EVENTS.md) | 活動排程系統的類型、資料表、運作方式、後台、年度行事曆 | 設計，尚未實作 |
+| [`docs/ops/SUPPORT.md`](docs/ops/SUPPORT.md) | 客服管道、案件分級與時限、常見案件處理步驟、回覆範本 | 可直接使用 |
+| [`docs/ops/LOADTEST.md`](docs/ops/LOADTEST.md) | 壓力測試腳本的用法、報告解讀、本機實測結果 | 腳本可執行 |
+| [`docs/ops/LAUNCH_CHECKLIST.md`](docs/ops/LAUNCH_CHECKLIST.md) | 開服檢查清單，逐項標示目前是否具備 | — |
+| [`docs/legal/TERMS.md`](docs/legal/TERMS.md) | 服務條款草稿 | **草稿，需律師審閱** |
+| [`docs/legal/PRIVACY.md`](docs/legal/PRIVACY.md) | 隱私權政策草稿 | **草稿，需律師審閱** |
 
 ## 專案結構
 
@@ -89,6 +102,7 @@ npm run dev
 | `npm run smoke` | 對執行中的伺服器跑五組煙霧測試：連線、戰鬥、道具、社交與任務、後台與防外掛（後四組需要開啟 GM 指令） |
 | `npm run admin:grant -- <帳號> [admin\|gm\|player]` | 設定帳號的後台角色 |
 | `npm run check:content` | 檢查資料表與地圖有沒有填錯（不需要伺服器與資料庫） |
+| `npm run loadtest` | 壓力測試（用法見 [`docs/ops/LOADTEST.md`](docs/ops/LOADTEST.md)） |
 | `npm test` | 執行 shared 的單元測試 |
 | `npm run typecheck` | 三個套件的型別檢查 |
 | `npm run build`／`npm run preview` | 打包用戶端到 `client/dist`／預覽打包結果 |

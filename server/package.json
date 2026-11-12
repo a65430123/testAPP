@@ -10,7 +10,8 @@
     "smoke": "tsx scripts/smoke.ts && tsx scripts/smoke-combat.ts && tsx scripts/smoke-items.ts && tsx scripts/smoke-social.ts && tsx scripts/smoke-admin.ts",
     "typecheck": "tsc -p tsconfig.json",
     "check:content": "tsx scripts/check-content.ts",
-    "admin:grant": "tsx scripts/admin-grant.ts"
+    "admin:grant": "tsx scripts/admin-grant.ts",
+    "loadtest": "tsx scripts/loadtest.ts"
   },
   "dependencies": {
     "@colyseus/schema": "^5.0.46",
