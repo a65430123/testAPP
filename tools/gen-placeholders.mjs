@@ -334,7 +334,7 @@ function drawPlayerSheet() {
 const MONSTER_SIZE = 48;
 
 function drawMonsterSheet() {
-  const img = new Image(MONSTER_SIZE * 3, MONSTER_SIZE);
+  const img = new Image(MONSTER_SIZE * 6, MONSTER_SIZE);
   const shadow = [20, 30, 40, 80];
   const eye = [30, 34, 50];
 
@@ -374,6 +374,49 @@ function drawMonsterSheet() {
     img.fillEllipse(ox + 24, 6, 2, 4, [112, 190, 110]);
     img.fillRect(ox + 20, 31, 2, 3, eye);
     img.fillRect(ox + 26, 31, 2, 3, eye);
+  }
+  // 3：竊糧鼠／5：地窖鼠王（同一個造型，鼠王多一頂王冠與金牙；用戶端會把鼠王放大）
+  for (const [index, king] of [[3, false], [5, true]]) {
+    const ox = MONSTER_SIZE * index;
+    const fur = king ? [112, 96, 110] : [150, 146, 156];
+    const belly = king ? [150, 132, 146] : [198, 194, 200];
+    img.fillEllipse(ox + 24, 42, 14, 4, shadow);
+    img.fillRect(ox + 36, 36, 9, 2, [226, 168, 170]); // 尾巴
+    img.fillEllipse(ox + 16, 18, 5, 5, fur); // 耳朵
+    img.fillEllipse(ox + 32, 18, 5, 5, fur);
+    img.fillEllipse(ox + 16, 18, 2.5, 2.5, [226, 168, 170]);
+    img.fillEllipse(ox + 32, 18, 2.5, 2.5, [226, 168, 170]);
+    img.fillEllipse(ox + 24, 31, 13, 11, fur);
+    img.fillEllipse(ox + 24, 35, 8, 6, belly);
+    img.fillRect(ox + 19, 27, 2, 3, king ? [220, 60, 60] : eye);
+    img.fillRect(ox + 27, 27, 2, 3, king ? [220, 60, 60] : eye);
+    img.fillRect(ox + 23, 32, 2, 2, [240, 150, 160]);
+    if (king) {
+      img.fillRect(ox + 23, 34, 2, 3, [250, 210, 70]); // 金牙
+      img.fillRect(ox + 17, 10, 14, 4, [250, 210, 70]); // 王冠
+      img.fillPolygon([[ox + 17, 10], [ox + 20, 4], [ox + 22, 10]], [250, 210, 70]);
+      img.fillPolygon([[ox + 22, 10], [ox + 24, 3], [ox + 26, 10]], [250, 210, 70]);
+      img.fillPolygon([[ox + 26, 10], [ox + 28, 4], [ox + 31, 10]], [250, 210, 70]);
+    }
+  }
+  // 4：蛛網織娘
+  {
+    const ox = MONSTER_SIZE * 4;
+    const body = [70, 58, 96];
+    img.fillEllipse(ox + 24, 42, 14, 4, shadow);
+    for (const side of [-1, 1]) {
+      for (const [dy, reach] of [[-4, 15], [0, 17], [4, 15]]) {
+        img.fillPolygon(
+          [[ox + 24, 30 + dy], [ox + 24 + side * reach, 24 + dy * 2], [ox + 24 + side * (reach + 1), 40], [ox + 24 + side * (reach - 2), 40], [ox + 24 + side * (reach - 2), 27 + dy * 2]],
+          [52, 44, 72],
+        );
+      }
+    }
+    img.fillEllipse(ox + 24, 32, 10, 9, body);
+    img.fillEllipse(ox + 24, 22, 7, 6, body);
+    img.fillEllipse(ox + 24, 33, 4, 4, [170, 96, 200]);
+    img.fillRect(ox + 20, 21, 2, 2, [240, 90, 90]);
+    img.fillRect(ox + 26, 21, 2, 2, [240, 90, 90]);
   }
   return img;
 }
@@ -680,12 +723,56 @@ function buildC01() {
     ground,
     props,
     spawn,
-    portals: [{ name: 'to_F01', x: 14, y: 28, width: 2, height: 1, targetMap: 'F01', targetX: 20, targetY: 3 }],
-    // 廣場上的三位 NPC：雜貨商、鍛造師、倉庫管理員
+    portals: [
+      { name: 'to_F01', x: 14, y: 28, width: 2, height: 1, targetMap: 'F01', targetX: 20, targetY: 3 },
+      // 廣場東南角：通往鼠尾地窖的入口
+      { name: 'to_D01', x: 21, y: 20, width: 1, height: 1, targetMap: 'D01', targetX: 3, targetY: 4 },
+    ],
+    // 廣場上的 NPC：旅團嚮導、雜貨商、鍛造師、倉庫管理員
     npcs: [
+      { npcId: 'c01_guide', x: 17, y: 16 },
       { npcId: 'c01_grocer', x: 12, y: 12 },
       { npcId: 'c01_smith', x: 18, y: 12 },
       { npcId: 'c01_storage', x: 15, y: 11 },
+    ],
+  });
+}
+
+/** D01 鼠尾地窖（24×24）：石板地面的房間與走道，沒有地面的地方就是牆；最深處是鼠王的巢穴 */
+function buildD01() {
+  const W = 24;
+  const H = 24;
+  const ground = new Array(W * H).fill(0);
+  const props = new Array(W * H).fill(0);
+  const idx = (x, y) => y * W + x;
+  const floor = (x0, y0, x1, y1) => {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) ground[idx(x, y)] = GID.stone;
+    }
+  };
+  floor(2, 2, 7, 7); // 入口
+  floor(8, 4, 11, 5); // 走道
+  floor(12, 2, 21, 9); // 鼠窩
+  floor(16, 10, 17, 13); // 走道
+  floor(10, 14, 21, 21); // 蛛巢
+  floor(6, 17, 9, 18); // 走道
+  floor(2, 13, 5, 21); // 鼠王的巢穴
+  for (const [x, y] of [[6, 6], [13, 3], [20, 8], [14, 8], [11, 15], [20, 20], [15, 19], [2, 21], [5, 13]]) {
+    props[idx(x, y)] = GID.crate;
+  }
+  return makeTiledMap({
+    mapId: 'D01',
+    displayName: '鼠尾地窖',
+    width: W,
+    height: H,
+    ground,
+    props,
+    spawn: { x: 3, y: 4 },
+    portals: [{ name: 'to_C01', x: 3, y: 2, width: 1, height: 1, targetMap: 'C01', targetX: 20, targetY: 21 }],
+    monsterSpawns: [
+      { name: 'grainthief_den', monsterId: 'grainthief', count: 7, x: 12, y: 2, width: 10, height: 8 },
+      { name: 'webweaver_nest', monsterId: 'webweaver', count: 6, x: 10, y: 14, width: 12, height: 8 },
+      { name: 'gru_lair', monsterId: 'cellarking_gru', count: 1, x: 2, y: 15, width: 4, height: 6 },
     ],
   });
 }
@@ -701,6 +788,7 @@ writePng(resolve(SPRITE_DIR, 'drop.png'), drawDropIcon());
 const MAPS = [
   { file: 'f01_sprout_meadow.json', build: buildF01 },
   { file: 'c01_dawnsprout_town.json', build: buildC01 },
+  { file: 'd01_rattail_cellar.json', build: buildD01 },
 ];
 mkdirSync(MAP_DIR, { recursive: true });
 for (const { file, build } of MAPS) {

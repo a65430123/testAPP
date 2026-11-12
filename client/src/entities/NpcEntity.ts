@@ -5,6 +5,7 @@ import { ENTITY_KEY, ENTITY_KIND } from './MonsterEntity';
 
 /** 各種 NPC 的佔位顏色（沿用玩家的圖，染色區分） */
 const NPC_TINT: Record<NpcDef['type'], number> = {
+  talk: 0xc8ffb0,
   shop: 0xffd98a,
   refine: 0xff9c8a,
   storage: 0x9cd0ff,

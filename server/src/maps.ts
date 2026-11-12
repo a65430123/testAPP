@@ -12,6 +12,7 @@ import {
   getMonsterDef,
   getNpcDef,
   isWalkable,
+  QUESTS,
   SPAWN_PLAYER,
   type CollisionGrid,
   type MonsterSpawnArea,
@@ -84,6 +85,15 @@ function loadMaps(): Map<string, GameMap> {
       }
       if (!isWalkable(target.grid, portal.targetX, portal.targetY)) {
         throw new Error(`地圖 ${map.id} 的傳送點「${portal.name}」目的地不可行走`);
+      }
+    }
+  }
+  // 任務的發布與回報 NPC 都必須真的站在某張地圖上，否則玩家接不到或交不了任務
+  const placed = new Set([...maps.values()].flatMap((m) => m.npcs.map((n) => n.npcId)));
+  for (const quest of QUESTS) {
+    for (const npcId of [quest.giver, quest.turnIn]) {
+      if (!placed.has(npcId)) {
+        throw new Error(`任務 ${quest.id} 的 NPC ${npcId} 沒有放在任何地圖上`);
       }
     }
   }

@@ -23,7 +23,10 @@ export interface ItemLogEntry {
     | 'storage_in'
     | 'storage_out'
     | 'trade_out'
-    | 'trade_in';
+    | 'trade_in'
+    | 'guild_create'
+    | 'quest_turn_in'
+    | 'quest_reward';
   characterId: number;
   otherCharacterId?: number;
   itemUid?: string;
@@ -169,10 +172,20 @@ export async function writeItemChange(
 /**
  * 提交一次道具異動：等相關角色前面的寫入都完成後，在一個交易內寫入道具、星幣與紀錄。
  * 失敗時資料庫完全不變並丟出例外，呼叫端不應更新記憶體中的資料。
+ * @param extra 要在同一個交易內一起執行的其他寫入
  */
-export function commitItemChange(changes: OwnerChange[], logs: ItemLogEntry[]): Promise<void> {
+export function commitItemChange(
+  changes: OwnerChange[],
+  logs: ItemLogEntry[],
+  extra?: (client: pg.PoolClient) => Promise<void>,
+): Promise<void> {
   return withCharacterLock(
     changes.map((c) => c.characterId),
-    () => withTransaction((client) => writeItemChange(client, changes, logs)),
+    () =>
+      withTransaction(async (client) => {
+        await writeItemChange(client, changes, logs);
+        // 需要與道具異動「同生共死」的其他寫入（例如把任務標成已完成、建立公會）
+        await extra?.(client);
+      }),
   );
 }

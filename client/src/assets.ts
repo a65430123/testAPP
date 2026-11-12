@@ -1,8 +1,6 @@
 // 資源鍵值與路徑集中管理，之後換成正式美術只需改這裡與圖檔
 
 import { getMapProperty, type TiledMap } from '@starmemory/shared';
-import c01Json from '@starmemory/shared/maps/c01_dawnsprout_town.json';
-import f01Json from '@starmemory/shared/maps/f01_sprout_meadow.json';
 
 export const TEXTURE = {
   ground: 'tileset_ground',
@@ -31,15 +29,25 @@ export const REGISTRY = {
   session: 'session',
   chat: 'chat',
   itemUi: 'itemUi',
+  socialUi: 'socialUi',
+  questUi: 'questUi',
   status: 'status',
   skills: 'skills',
 } as const;
 
-/** 地圖資料（Tiled JSON），以地圖代號為鍵。新增地圖時在這裡加一行。 */
-export const MAPS: Record<string, TiledMap> = {
-  C01: c01Json as unknown as TiledMap,
-  F01: f01Json as unknown as TiledMap,
-};
+/**
+ * 地圖資料（Tiled JSON），以地圖代號為鍵。
+ * 打包時自動掃描 shared/maps 底下所有 .json，新增地圖只要把檔案放進去，不必改程式。
+ */
+const mapModules = import.meta.glob<TiledMap>('../../shared/maps/*.json', { eager: true, import: 'default' });
+
+export const MAPS: Record<string, TiledMap> = {};
+for (const map of Object.values(mapModules)) {
+  const id = getMapProperty(map, 'mapId');
+  if (id) {
+    MAPS[id] = map;
+  }
+}
 
 /** 地圖的顯示名稱；找不到時回傳代號本身 */
 export function mapDisplayName(mapId: string): string {

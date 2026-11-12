@@ -93,12 +93,15 @@ export interface ItemDef {
 
 // ------------------------------------------------------------ NPC
 
-export type NpcType = 'shop' | 'refine' | 'storage';
+/** talk：只有對話與任務；其餘種類另外提供對應的功能 */
+export type NpcType = 'talk' | 'shop' | 'refine' | 'storage';
 
 export interface NpcDef {
   id: string;
   name: string;
   type: NpcType;
+  /** 打招呼時隨機說的話 */
+  dialogue: string[];
   /** 商店販售的道具代號（只有 shop 有） */
   sells?: string[];
 }
@@ -140,6 +143,8 @@ export interface MonsterDef {
   respawnSec: number;
   /** 用戶端圖集中的格子編號 */
   sprite: number;
+  /** 用戶端顯示時的放大倍率（省略為 1；首領通常比較大） */
+  scale?: number;
   drops: MonsterDrop[];
 }
 
@@ -238,6 +243,11 @@ export function validateGameData(): string[] {
       if (itemById.get(itemId)?.buyPrice === undefined) {
         errors.push(`NPC ${npc.id} 販售的道具 ${itemId} 不存在或沒有設定 buyPrice`);
       }
+    }
+  }
+  for (const npc of NPCS) {
+    if (!Array.isArray(npc.dialogue) || npc.dialogue.length === 0) {
+      errors.push(`NPC ${npc.id} 至少要有一句對話`);
     }
   }
   for (const item of ITEMS) {

@@ -79,12 +79,13 @@ export class PlayerEntity {
         color: isLocal ? '#ffe98a' : '#ffffff',
         stroke: '#000000',
         strokeThickness: 3,
+        align: 'center',
       })
       .setOrigin(0.5, 0)
       .setDepth(LABEL_DEPTH);
     this.hpBar = new HpBar(scene, 36, 0x58c46a, LABEL_DEPTH);
     this.hpBar.setVisible(false);
-    this.setInfo(name, level);
+    this.setInfo(name, level, '');
     this.layout();
   }
 
@@ -95,9 +96,10 @@ export class PlayerEntity {
   }
 
   /** 更新名牌上的等級與名稱 */
-  setInfo(name: string, level: number): void {
+  setInfo(name: string, level: number, guild: string): void {
     this.name = name;
-    const text = `Lv.${level} ${name}`;
+    // 有公會時在名字下方多一行公會名稱
+    const text = guild ? `Lv.${level} ${name}\n〈${guild}〉` : `Lv.${level} ${name}`;
     if (this.label.text !== text) {
       this.label.setText(text);
     }

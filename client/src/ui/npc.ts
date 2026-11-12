@@ -28,6 +28,10 @@ export class NpcWindow {
   private npc: NpcDef | null = null;
   private storage: InventoryItem[] = [];
   private refineTarget: InventoryItem | null = null;
+  /** 這次開啟時 NPC 說的話（開啟時隨機挑一句，重畫時不換） */
+  private greeting = '';
+  /** 產生任務區塊的函式（由任務介面提供） */
+  private questSection: ((npc: NpcDef) => HTMLElement | null) | null = null;
 
   constructor() {
     this.root = el('div');
@@ -44,6 +48,16 @@ export class NpcWindow {
     document.body.appendChild(this.root);
   }
 
+  /** 設定產生任務區塊的函式 */
+  setQuestSection(provider: (npc: NpcDef) => HTMLElement | null): void {
+    this.questSection = provider;
+  }
+
+  /** 任務或背包有變動時重畫（視窗沒開就不做事） */
+  refresh(): void {
+    this.render();
+  }
+
   setHandlers(handlers: NpcHandlers | null): void {
     this.handlers = handlers;
   }
@@ -55,6 +69,7 @@ export class NpcWindow {
 
   open(npc: NpcDef): void {
     this.npc = npc;
+    this.greeting = npc.dialogue[Math.floor(Math.random() * npc.dialogue.length)] ?? '';
     this.refineTarget = null;
     this.storage = [];
     this.root.hidden = false;
@@ -93,11 +108,17 @@ export class NpcWindow {
     }
     this.title.textContent = npc.name;
     this.content.replaceChildren();
+    // 先是 NPC 的招呼與任務，再來是這位 NPC 的功能（商店、精煉、倉庫）
+    this.content.appendChild(el('div', 'npc-talk', this.greeting));
+    const quests = this.questSection?.(npc);
+    if (quests) {
+      this.content.appendChild(quests);
+    }
     if (npc.type === 'shop') {
       this.renderShop(npc);
     } else if (npc.type === 'refine') {
       this.renderRefine(npc);
-    } else {
+    } else if (npc.type === 'storage') {
       this.renderStorage(npc);
     }
   }

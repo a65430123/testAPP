@@ -50,6 +50,12 @@ export interface MonsterHost {
   getTarget(id: string): AiTarget | undefined;
   /** 魔物對目標出手一次（傷害計算與後續處理由房間負責） */
   onMonsterAttack(monster: Monster, targetId: string): void;
+  /** 這種魔物死亡後多久重生（毫秒）；首領可由設定調整倍率 */
+  respawnDelayMs(def: MonsterDef): number;
+  /** 首領被擊倒：房間負責把重生時間寫進資料庫並公告 */
+  onBossKilled(monster: Monster, respawnAt: number): void;
+  /** 首領重生了：房間負責清除計時並公告 */
+  onBossSpawned(monster: Monster): void;
 }
 
 export class Monster {
@@ -94,11 +100,20 @@ export class MonsterManager {
     private readonly rng: () => number = Math.random,
   ) {}
 
-  /** 開房時依地圖的重生區生出所有魔物 */
-  spawnAll(now: number): void {
+  /**
+   * 開房時依地圖的重生區生出所有魔物。
+   * @param bossTimers 還在等待重生的首領：重生區名稱 → 重生時間（來自資料庫）。
+   *   地圖房間沒人時會關閉，重開時靠這份資料延續計時，首領不會因為房間重開就立刻出現。
+   */
+  spawnAll(now: number, bossTimers: ReadonlyMap<string, number> = new Map()): void {
     for (const area of this.host.map.monsterSpawns) {
+      const waitUntil = bossTimers.get(area.name) ?? 0;
       for (let i = 0; i < area.count; i++) {
-        this.spawn(area, now);
+        if (waitUntil > now) {
+          this.respawns.push({ at: waitUntil, area });
+        } else {
+          this.spawn(area, now);
+        }
       }
     }
   }
@@ -118,11 +133,11 @@ export class MonsterManager {
 
   // ------------------------------------------------------------ 重生
 
-  private spawn(area: MonsterSpawnArea, now: number): void {
+  private spawn(area: MonsterSpawnArea, now: number): Monster | null {
     const def = getMonsterDef(area.monsterId);
     const tile = this.randomWalkableTile(area);
     if (!def || !tile) {
-      return; // 重生區內沒有任何可站立的格子
+      return null; // 重生區內沒有任何可站立的格子
     }
     const home = { x: tile.x + 0.5, y: tile.y + 0.5 };
     const state = new MonsterState();
@@ -137,6 +152,7 @@ export class MonsterManager {
     monster.nextWanderAt = now + this.randomBetween(...WANDER_WAIT_MS);
     this.monsters.set(key, monster);
     this.host.monsterStates.set(key, state);
+    return monster;
   }
 
   /** 在重生區內隨機找一個可站立的格子 */
@@ -179,7 +195,11 @@ export class MonsterManager {
     if (monster.hp === 0) {
       this.monsters.delete(monster.key);
       this.host.monsterStates.delete(monster.key);
-      this.respawns.push({ at: now + monster.def.respawnSec * 1000, area: monster.area });
+      const respawnAt = now + this.host.respawnDelayMs(monster.def);
+      this.respawns.push({ at: respawnAt, area: monster.area });
+      if (monster.def.tier === 'boss') {
+        this.host.onBossKilled(monster, respawnAt);
+      }
       return true;
     }
 
@@ -211,7 +231,10 @@ export class MonsterManager {
       if (due.length > 0) {
         this.respawns = this.respawns.filter((r) => r.at > now);
         for (const r of due) {
-          this.spawn(r.area, now);
+          const monster = this.spawn(r.area, now);
+          if (monster?.def.tier === 'boss') {
+            this.host.onBossSpawned(monster);
+          }
         }
       }
     }

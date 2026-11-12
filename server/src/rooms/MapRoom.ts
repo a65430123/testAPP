@@ -16,6 +16,8 @@ import {
   DROP_LIFETIME_MS,
   DROP_OWNER_MS,
   expLevelModifier,
+  partyExpShare,
+  NPC_RANGE,
   expToNext,
   findPath,
   getClassDef,
@@ -47,6 +49,7 @@ import {
   type InventoryMessage,
   type ItemDef,
   type JoinMapOptions,
+  type MonsterDef,
   type MoveRejectMessage,
   type Point,
   type SelfMessage,
@@ -58,7 +61,12 @@ import { config } from '../config';
 import { loadCharacter, saveCharacter, type CharacterRecord } from '../db/characters';
 import { ItemController, type ItemHost } from '../game/ItemController';
 import { MonsterManager, type AiTarget, type Monster, type MonsterHost } from '../game/MonsterManager';
+import { QuestController, type QuestHost } from '../game/QuestController';
+import { SocialController, type SocialHost } from '../game/SocialController';
 import { TradeController, type TradeHost } from '../game/TradeController';
+import { clearBossTimer, loadBossTimers, setBossTimer } from '../db/social';
+import { hub, type OnlineCharacter } from '../social/hub';
+import { partyManager } from '../social/party';
 import { getMap, type GameMap } from '../maps';
 import { clearOnline, getOnline, setOnline, type OnlineEntry } from '../online';
 import type { PlayerRuntime } from './runtime';
@@ -66,6 +74,8 @@ import { DropState, MapState, PlayerState } from './schema';
 
 /** 世界頻道在各房間之間轉送用的主題名稱 */
 const WORLD_CHAT_TOPIC = 'chat:world';
+/** 全伺服器系統公告（例如首領出現）在各房間之間轉送用的主題名稱 */
+const WORLD_SYSTEM_TOPIC = 'system:world';
 /** 送出切換地圖通知後，用戶端最多有多久時間離開房間（毫秒） */
 const TRANSFER_TIMEOUT_MS = 5000;
 /** 同一玩家要求背包內容的最短間隔（毫秒） */
@@ -87,7 +97,7 @@ function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, ItemHost, TradeHost {
+export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, ItemHost, TradeHost, SocialHost, QuestHost {
   override maxClients = ROOM_MAX_CLIENTS;
   override patchRate = SERVER_TICK_MS;
   override state = new MapState();
@@ -96,6 +106,13 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
   private monsters!: MonsterManager;
   private items!: ItemController;
   private trade!: TradeController;
+  private social!: SocialController;
+  private quests!: QuestController;
+  /** 房內玩家在線上名冊中的登記（連線代號 → 登記內容） */
+  private readonly hubEntries = new Map<string, OnlineCharacter>();
+  private readonly onWorldSystem = (message: SystemMessage): void => {
+    this.broadcast(MSG.system, message);
+  };
   private readonly runtimes = new Map<string, PlayerRuntime>();
   private readonly drops = new Map<string, DropRuntime>();
   private nextDropId = 1;
@@ -111,9 +128,12 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     this.map = map;
     this.state.mapId = map.id;
     this.monsters = new MonsterManager(this);
-    this.monsters.spawnAll(Date.now());
+    // 首領的重生時間存在資料庫：房間重開時延續計時，還沒到時間的首領不會出現
+    this.monsters.spawnAll(Date.now(), await loadBossTimers(map.id));
     this.items = new ItemController(this);
     this.trade = new TradeController(this, this.items);
+    this.social = new SocialController(this, this.items);
+    this.quests = new QuestController(this, this.items);
 
     this.onMessage(MSG.move, (client, message: unknown) => this.handleMove(client, message));
     this.onMessage(MSG.attack, (client, message: unknown) => this.handleAttack(client, message));
@@ -134,12 +154,15 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     this.onMessage(MSG.tradeOffer, (client, message: unknown) => this.trade.handleOffer(client, message));
     this.onMessage(MSG.tradeConfirm, (client) => this.trade.handleConfirm(client));
     this.onMessage(MSG.tradeCancel, (client) => this.trade.handleCancel(client));
+    this.onMessage(MSG.social, (client, message: unknown) => this.social.handle(client, message));
+    this.onMessage(MSG.quest, (client, message: unknown) => this.quests.handle(client, message));
     this.onMessage(MSG.allocStat, (client, message: unknown) => this.handleAllocStat(client, message));
     this.onMessage(MSG.chat, (client, message: unknown) => this.handleChat(client, message));
     this.onMessage(MSG.inventory, (client) => this.handleInventoryRequest(client));
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs), SERVER_TICK_MS);
     this.clock.setInterval(() => this.autosave(), AUTOSAVE_INTERVAL_MS);
     await this.presence.subscribe(WORLD_CHAT_TOPIC, this.onWorldChat);
+    await this.presence.subscribe(WORLD_SYSTEM_TOPIC, this.onWorldSystem);
   }
 
   /**
@@ -208,6 +231,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     state.y = record.y;
     state.hp = record.hp;
     state.maxHp = combat.maxHp;
+    state.guild = record.guild?.name ?? '';
     this.state.players.set(client.sessionId, state);
 
     let resolveLeft: () => void = () => undefined;
@@ -252,6 +276,33 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       resolveLeft,
     });
 
+    // 登記到線上名冊，隊伍、公會、好友才能跨地圖找到這位玩家
+    const mapId = this.map.id;
+    const entry: OnlineCharacter = {
+      characterId: record.id,
+      accountId: record.accountId,
+      name: record.name,
+      mapId,
+      get level() {
+        return record.level;
+      },
+      get guildId() {
+        return record.guild?.id ?? null;
+      },
+      send: (type, message) => client.send(type, message),
+      setGuild: (guild) => {
+        record.guild = guild;
+        state.guild = guild?.name ?? '';
+        const runtime = this.runtimes.get(client.sessionId);
+        if (runtime) {
+          void this.social.sendGuild(runtime).catch(() => undefined);
+        }
+      },
+    };
+    this.hubEntries.set(client.sessionId, entry);
+    hub.set(entry);
+    partyManager.onOnline(record.id);
+
     this.sendSystem(`${record.name} 來到了${this.map.displayName}`, client);
   }
 
@@ -265,6 +316,13 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     this.state.players.delete(client.sessionId);
     this.monsters.forgetTarget(client.sessionId);
     this.trade.onPlayerGone(client.sessionId);
+    const entry = this.hubEntries.get(client.sessionId);
+    if (entry) {
+      this.hubEntries.delete(client.sessionId);
+      hub.delete(entry);
+    }
+    // 切換地圖時保留隊伍；登出或斷線則離隊
+    partyManager.onOffline(runtime.record.id, runtime.transferring);
     try {
       // 等還在進行中的道具操作（例如正在寫入的交易）結束，再做最後一次存檔
       await runtime.itemQueue.catch(() => undefined);
@@ -285,6 +343,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
 
   override onDispose(): void {
     this.presence.unsubscribe(WORLD_CHAT_TOPIC, this.onWorldChat);
+    this.presence.unsubscribe(WORLD_SYSTEM_TOPIC, this.onWorldSystem);
   }
 
   // ------------------------------------------------------------ MonsterHost：提供給魔物 AI 的資訊
@@ -302,6 +361,39 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
   getTarget(id: string): AiTarget | undefined {
     const runtime = this.runtimes.get(id);
     return runtime ? this.toAiTarget(id, runtime) : undefined;
+  }
+
+  respawnDelayMs(def: MonsterDef): number {
+    const scale = def.tier === 'boss' ? config.bossRespawnScale : 1;
+    return def.respawnSec * 1000 * scale;
+  }
+
+  /** 首領被擊倒：把重生時間寫進資料庫，並向全伺服器公告 */
+  onBossKilled(monster: Monster, respawnAt: number): void {
+    setBossTimer(this.map.id, monster.area.name, respawnAt).catch((err: unknown) => {
+      console.error(`[room ${this.map.id}] 首領重生時間寫入失敗：`, err);
+    });
+    const minutes = Math.max(1, Math.round((respawnAt - Date.now()) / 60_000));
+    this.announce(`${this.map.displayName}的「${monster.def.name}」被擊倒了！約 ${minutes} 分鐘後會再次出現`);
+  }
+
+  onBossSpawned(monster: Monster): void {
+    clearBossTimer(this.map.id, monster.area.name).catch((err: unknown) => {
+      console.error(`[room ${this.map.id}] 首領重生時間清除失敗：`, err);
+    });
+    this.announce(`「${monster.def.name}」出現在${this.map.displayName}！`);
+  }
+
+  /** 全伺服器系統公告：所有地圖房間都會轉送給房內玩家 */
+  private announce(text: string): void {
+    const message: SystemMessage = { text };
+    this.presence.publish(WORLD_SYSTEM_TOPIC, message);
+  }
+
+  /** 玩家是否就在指定的 NPC 旁邊（任務用） */
+  isNearNpc(runtime: PlayerRuntime, npcId: string): boolean {
+    const npc = this.map.npcs.find((n) => n.npcId === npcId);
+    return npc !== undefined && Math.hypot(runtime.move.x - npc.x, runtime.move.y - npc.y) <= NPC_RANGE + 0.5;
   }
 
   private toAiTarget(id: string, runtime: PlayerRuntime): AiTarget {
@@ -566,27 +658,59 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     }
   }
 
-  /** 魔物死亡：分配經驗、給星幣、產生掉落物 */
+  /** 魔物死亡：分配經驗（含組隊）、累計任務、給星幣、產生掉落物 */
   private onMonsterKilled(monster: Monster, now: number): void {
     const { def } = monster;
 
-    // 經驗：依各人造成的傷害比例分配，再套用等級差倍率
-    let total = 0;
-    for (const amount of monster.damageBy.values()) {
-      total += amount;
+    // 1. 先把傷害依「隊伍」加總：同隊的人算成一組，沒有隊伍的人自己一組
+    const byCharacter = new Map<number, PlayerRuntime>();
+    for (const runtime of this.runtimes.values()) {
+      byCharacter.set(runtime.record.id, runtime);
     }
+    let total = 0;
+    let topDamage = 0;
+    let topDealer: string | null = null;
+    const groups = new Map<string, { damage: number; members: PlayerRuntime[] }>();
     for (const [sessionId, amount] of monster.damageBy) {
-      const runtime = this.runtimes.get(sessionId);
-      if (!runtime || runtime.dead) {
-        continue;
+      total += amount;
+      if (amount > topDamage) {
+        topDamage = amount;
+        topDealer = sessionId;
       }
-      const share = total > 0 ? amount / total : 0;
-      const gain = Math.max(1, Math.round(def.exp * share * expLevelModifier(runtime.record.level, def.level)));
-      this.grantExp(runtime, gain);
+      const dealer = this.runtimes.get(sessionId);
+      if (!dealer) {
+        continue; // 打過但已經離開房間的人不分經驗
+      }
+      const partyIds = partyManager.memberIds(dealer.record.id);
+      const key = partyIds ? `party:${Math.min(...partyIds)}` : `solo:${dealer.record.id}`;
+      let group = groups.get(key);
+      if (!group) {
+        // 隊伍的話，同地圖、沒倒地的隊員都算（沒出手的隊員也分得到）
+        const members = partyIds
+          ? partyIds.map((id) => byCharacter.get(id)).filter((r): r is PlayerRuntime => r !== undefined && !r.dead && !r.transferring)
+          : dealer.dead ? [] : [dealer];
+        group = { damage: 0, members };
+        groups.set(key, group);
+      }
+      group.damage += amount;
     }
 
-    // 星幣與掉落物歸第一個打到牠的人
-    const ownerId = monster.firstAttackerId ?? '';
+    // 2. 各組依傷害比例拿經驗；隊伍每多 1 人總量 +10% 後平分，每個人再套用自己的等級差倍率
+    for (const group of groups.values()) {
+      if (group.members.length === 0 || total <= 0) {
+        continue;
+      }
+      const groupExp = def.exp * (group.damage / total);
+      const each = partyExpShare(groupExp, group.members.length);
+      for (const member of group.members) {
+        const gain = Math.max(1, Math.round(each * expLevelModifier(member.record.level, def.level)));
+        this.grantExp(member, gain);
+        this.quests.onKill(member, def.id);
+      }
+    }
+
+    // 3. 星幣與掉落物：一般魔物歸第一個打到的人；菁英與首領歸造成最多傷害的人
+    const ownerId = (def.tier === 'normal' ? monster.firstAttackerId : topDealer) ?? '';
     const owner = this.runtimes.get(ownerId);
     if (owner) {
       const [min, max] = def.coins;
@@ -620,7 +744,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
   }
 
   /** 給予經驗並處理升級：每升一級獲得素質點，HP／SP 回滿 */
-  private grantExp(runtime: PlayerRuntime, gain: number): void {
+  grantExp(runtime: PlayerRuntime, gain: number): void {
     const { record, state, client } = runtime;
     if (record.level >= MAX_LEVEL) {
       return;
@@ -799,14 +923,21 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       return;
     }
 
-    const channel: ChatChannel = payload?.channel === 'world' ? 'world' : 'map';
+    const requested = payload?.channel;
+    const channel: ChatChannel =
+      requested === 'world' || requested === 'party' || requested === 'guild' ? requested : 'map';
     const chat: ChatMessage = {
       channel,
       sessionId: client.sessionId,
       name: runtime.record.name,
       text,
     };
-    if (channel === 'world') {
+    if (channel === 'party' || channel === 'guild') {
+      // 隊伍與公會頻道：成員可能在別的地圖，透過線上名冊直接傳給每個人
+      if (!this.social.routeChat(runtime, chat)) {
+        this.sendSystemTo(client, channel === 'party' ? '你目前沒有隊伍' : '你目前沒有公會');
+      }
+    } else if (channel === 'world') {
       // 透過 presence 發佈，所有地圖房間（包含自己）都會收到並轉送給房內玩家
       this.presence.publish(WORLD_CHAT_TOPIC, chat);
     } else {
@@ -827,6 +958,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     runtime.lastInventoryRequestAt = now;
     this.sendInventory(runtime);
     this.sendSelf(runtime);
+    this.quests.send(runtime);
   }
 
   /**
@@ -836,6 +968,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
    *   /gm coins <數值>           增減星幣
    *   /gm exp <數值>             獲得經驗值（會觸發升級）
    *   /gm hp <數值>              設定目前 HP
+   *   /gm slay                   直接擊倒目前的攻擊目標
    */
   private handleGmCommand(runtime: PlayerRuntime, command: string): void {
     const { record, client, state } = runtime;
@@ -886,6 +1019,20 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       this.items.gmCoins(runtime, amount);
       return;
     }
+    if (name === 'slay') {
+      // 直接擊倒目前的攻擊目標（走正常的擊殺流程：經驗、任務、掉落、首領計時都照常）
+      const monster = runtime.targetKey ? this.monsters.get(runtime.targetKey) : undefined;
+      if (!monster) {
+        this.sendSystemTo(client, '請先攻擊一隻魔物');
+        return;
+      }
+      const now = Date.now();
+      if (this.monsters.applyDamage(monster, monster.hp, client.sessionId, now)) {
+        this.onMonsterKilled(monster, now);
+      }
+      this.sendSystemTo(client, `已擊倒 ${monster.def.name}`);
+      return;
+    }
     if (name === 'exp') {
       const amount = Number(args[0]);
       if (!Number.isInteger(amount) || amount < 1) {
@@ -906,7 +1053,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       this.sendSystemTo(client, `HP 已設為 ${record.hp}`);
       return;
     }
-    this.sendSystemTo(client, '可用指令：/gm level <等級>、/gm exp <數值>、/gm item <道具代號> [數量] [卡槽數]、/gm coins <數值>、/gm hp <數值>');
+    this.sendSystemTo(client, '可用指令：/gm level <等級>、/gm exp <數值>、/gm item <道具代號> [數量] [卡槽數]、/gm coins <數值>、/gm hp <數值>、/gm slay');
   }
 
   // ------------------------------------------------------------ 模擬

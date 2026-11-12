@@ -30,6 +30,8 @@ export class ChatBox {
         <select aria-label="頻道">
           <option value="map">${CHAT_CHANNEL_LABEL.map}</option>
           <option value="world">${CHAT_CHANNEL_LABEL.world}</option>
+          <option value="party">${CHAT_CHANNEL_LABEL.party}</option>
+          <option value="guild">${CHAT_CHANNEL_LABEL.guild}</option>
         </select>
         <input type="text" maxlength="${CHAT_MAX_LENGTH}" placeholder="按 Enter 輸入訊息" />
       </form>`;

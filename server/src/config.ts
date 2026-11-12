@@ -44,4 +44,6 @@ export const config = {
   autoMigrate: bool(process.env.AUTO_MIGRATE, true),
   gmCommands: bool(process.env.ENABLE_GM_COMMANDS, false),
   trustProxy: bool(process.env.TRUST_PROXY, false),
+  /** 首領重生時間的倍率（測試時設成很小的數字，就不必真的等 30 分鐘） */
+  bossRespawnScale: Math.max(0, Number(process.env.BOSS_RESPAWN_SCALE ?? 1) || 1),
 } as const;

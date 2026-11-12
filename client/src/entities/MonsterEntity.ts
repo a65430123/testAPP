@@ -26,6 +26,7 @@ export class MonsterEntity {
     this.sprite = scene.add
       .sprite(pos.x, pos.y, TEXTURE.monsters, def.sprite)
       .setOrigin(0.5, MONSTER_FRAME.footY / MONSTER_FRAME.height)
+      .setScale(def.scale ?? 1)
       .setDepth(pos.y)
       .setInteractive({ useHandCursor: true });
     this.sprite.setData(ENTITY_KIND, 'monster').setData(ENTITY_KEY, key);
@@ -40,7 +41,11 @@ export class MonsterEntity {
       })
       .setOrigin(0.5, 0)
       .setDepth(LABEL_DEPTH);
-    this.hpBar = new HpBar(scene, 36, 0xe8554e, LABEL_DEPTH);
+    // 首領的名稱用金色、血條加寬
+    if (def.tier === 'boss') {
+      this.label.setColor('#ffd23f').setFontSize(14);
+    }
+    this.hpBar = new HpBar(scene, def.tier === 'boss' ? 80 : 36, 0xe8554e, LABEL_DEPTH);
     this.hpBar.setVisible(false);
     this.layout();
 
@@ -74,7 +79,7 @@ export class MonsterEntity {
   private layout(): void {
     const { x, y } = this.sprite;
     this.label.setPosition(x, y + 4);
-    this.hpBar.setPosition(x, y - MONSTER_FRAME.footY - 6);
+    this.hpBar.setPosition(x, y - MONSTER_FRAME.footY * (this.def.scale ?? 1) - 6);
   }
 
   destroy(): void {

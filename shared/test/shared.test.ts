@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   addToContainer,
+  getQuestDef,
+  isQuestReady,
+  objectiveCounts,
+  partyExpShare,
+  questAcceptError,
+  QUESTS,
+  validateQuests,
   cloneItems,
   computeEquipTotals,
   equipError,
@@ -537,5 +544,43 @@ describe('魔物重生區', () => {
     expect(findMonsterSpawns(map)).toEqual([
       { name: 'bobolu_a', x: 2, y: 3, width: 5, height: 4, monsterId: 'bobolu', count: 4 },
     ]);
+  });
+});
+
+describe('組隊經驗', () => {
+  it('每多 1 人總量 +10%，再平分', () => {
+    expect(partyExpShare(100, 1)).toBe(100);
+    expect(partyExpShare(100, 2)).toBeCloseTo(55);
+    expect(partyExpShare(100, 6)).toBeCloseTo(25);
+  });
+});
+
+describe('任務', () => {
+  it('任務資料的參照都存在', () => {
+    expect(validateQuests()).toEqual([]);
+    expect(QUESTS.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('接任務的條件：等級、前置任務、不可重複', () => {
+    const first = getQuestDef('q_first_steps')!;
+    const second = getQuestDef('q_sticky_business')!;
+    const mushroom = getQuestDef('q_mushroom_menace')!;
+    expect(questAcceptError(first, 1, new Set(), new Set())).toBeNull();
+    expect(questAcceptError(first, 1, new Set(['q_first_steps']), new Set())).not.toBeNull();
+    expect(questAcceptError(first, 1, new Set(), new Set(['q_first_steps']))).not.toBeNull();
+    expect(questAcceptError(second, 1, new Set(), new Set())).not.toBeNull();
+    expect(questAcceptError(second, 1, new Set(), new Set(['q_first_steps']))).toBeNull();
+    expect(questAcceptError(mushroom, 2, new Set(), new Set())).not.toBeNull();
+  });
+
+  it('擊殺目標看進度，收集目標看背包數量', () => {
+    const kill = getQuestDef('q_first_steps')!;
+    expect(objectiveCounts(kill, [3], () => 0)).toEqual([3]);
+    expect(isQuestReady(kill, [4], () => 0)).toBe(false);
+    expect(isQuestReady(kill, [5], () => 0)).toBe(true);
+    const collect = getQuestDef('q_sticky_business')!;
+    expect(objectiveCounts(collect, [], () => 9)).toEqual([5]);
+    expect(isQuestReady(collect, [], (id) => (id === 'mat_sticky_dew' ? 4 : 99))).toBe(false);
+    expect(isQuestReady(collect, [], () => 5)).toBe(true);
   });
 });

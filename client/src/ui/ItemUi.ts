@@ -138,7 +138,7 @@ export class ItemUi {
     let mode: InventoryMode = 'normal';
     if (this.trade.isOpen) {
       mode = 'trade';
-    } else if (this.npc.current) {
+    } else if (this.npc.current && this.npc.current.type !== 'talk') {
       mode = this.npc.current.type;
     }
     this.inventory.setMode(mode);

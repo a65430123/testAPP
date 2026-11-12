@@ -22,7 +22,8 @@
     "gen:assets": "node tools/gen-placeholders.mjs",
     "migrate": "npm run migrate -w @starmemory/server",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
-    "db:down": "docker compose -f docker-compose.dev.yml down"
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "check:content": "npm run check:content -w @starmemory/server"
   },
   "engines": {
     "node": ">=20"

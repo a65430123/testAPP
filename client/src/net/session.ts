@@ -21,6 +21,8 @@ export interface PlayerView {
   level: number;
   x: number;
   y: number;
+  /** 公會名稱；沒有公會時為空字串 */
+  guild: string;
   hp: number;
   maxHp: number;
 }

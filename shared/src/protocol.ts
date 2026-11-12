@@ -2,6 +2,7 @@
 
 import type { Stats } from './character';
 import type { InventoryItem, ItemStack } from './equipment';
+import type { QuestProgress } from './quests';
 
 /** Colyseus 房間類型名稱：每張地圖一個房間，以 mapId 區分 */
 export const ROOM_MAP = 'map';
@@ -48,6 +49,14 @@ export const TRADE_MAX_ITEMS = 10;
 /** 交易星幣的稅率（收款方實拿 95%），以及可以交易星幣的最低等級 */
 export const TRADE_TAX = 0.05;
 export const TRADE_COIN_MIN_LEVEL = 15;
+
+/** 公會：建立費用（星幣）、人數上限、名稱長度 */
+export const GUILD_CREATE_COST = 5000;
+export const GUILD_MAX_MEMBERS = 30;
+/** 好友人數上限 */
+export const FRIEND_MAX = 50;
+/** 組隊、公會、好友邀請的有效時間（毫秒） */
+export const INVITE_TTL_MS = 30_000;
 
 /** 帳號與密碼長度限制（bcrypt 只會使用密碼的前 72 個位元組） */
 export const USERNAME_MIN_LENGTH = 3;
@@ -112,6 +121,17 @@ export const MSG = {
   /** 伺服器 → 用戶端：交易視窗的最新內容／交易結束 */
   tradeState: 'tradeState',
   tradeEnd: 'tradeEnd',
+  /** 用戶端 → 伺服器：組隊、公會、好友的各種操作（內容見 SocialRequest） */
+  social: 'social',
+  /** 伺服器 → 用戶端：有人邀請你（組隊、公會、好友） */
+  socialInvite: 'socialInvite',
+  /** 伺服器 → 用戶端（只傳給本人）：隊伍、公會、好友的最新內容 */
+  party: 'party',
+  guild: 'guild',
+  friends: 'friends',
+  /** 用戶端 → 伺服器：接任務、回報、放棄；伺服器 → 用戶端：任務狀態 */
+  quest: 'quest',
+  quests: 'quests',
   /** 用戶端 → 伺服器：把一項素質加 1 */
   allocStat: 'allocStat',
   /** 伺服器 → 用戶端（只傳給本人）：等級、經驗、HP／SP、素質等個人數值 */
@@ -131,11 +151,13 @@ export const CLOSE_CODE = {
   transferTimeout: 4102,
 } as const;
 
-export type ChatChannel = 'map' | 'world';
+export type ChatChannel = 'map' | 'world' | 'party' | 'guild';
 
 export const CHAT_CHANNEL_LABEL: Record<ChatChannel, string> = {
   map: '地圖',
   world: '世界',
+  party: '隊伍',
+  guild: '公會',
 };
 
 export interface MoveRequest {
@@ -273,6 +295,66 @@ export interface CombatEvent {
   crit: boolean;
   /** 由技能造成時附上技能代號 */
   skillId?: string;
+}
+
+export type SocialKind = 'party' | 'guild' | 'friend';
+
+/** 組隊、公會、好友的操作。targetId 是同地圖玩家的連線代號；characterId 是角色編號（對方可能不在線上）。 */
+export type SocialRequest =
+  | { action: 'refresh' }
+  | { action: 'invite'; kind: SocialKind; targetId: string }
+  | { action: 'respond'; kind: SocialKind; accept: boolean }
+  | { action: 'partyLeave' }
+  | { action: 'partyKick'; characterId: number }
+  | { action: 'guildCreate'; name: string }
+  | { action: 'guildLeave' }
+  | { action: 'guildKick'; characterId: number }
+  | { action: 'guildDisband' }
+  | { action: 'friendRemove'; characterId: number };
+
+export interface SocialInviteMessage {
+  kind: SocialKind;
+  fromName: string;
+  /** 公會邀請時是公會名稱 */
+  detail?: string;
+}
+
+/** 隊伍、公會、好友列表中的一位成員 */
+export interface SocialMember {
+  characterId: number;
+  name: string;
+  level: number;
+  online: boolean;
+  /** 所在地圖（不在線上時為空字串） */
+  mapId: string;
+  /** 隊長或會長 */
+  leader: boolean;
+}
+
+/** 隊伍內容；沒有隊伍時 members 為空陣列 */
+export interface PartyMessage {
+  members: SocialMember[];
+}
+
+/** 公會內容；沒有公會時 guild 為 null */
+export interface GuildMessage {
+  guild: { id: number; name: string; members: SocialMember[] } | null;
+}
+
+export interface FriendsMessage {
+  friends: SocialMember[];
+}
+
+export type QuestRequest =
+  | { action: 'accept'; questId: string; npcId: string }
+  | { action: 'complete'; questId: string; npcId: string }
+  | { action: 'abandon'; questId: string };
+
+/** 任務狀態（只傳給本人） */
+export interface QuestsMessage {
+  active: QuestProgress[];
+  /** 已完成的任務代號 */
+  done: string[];
 }
 
 /** 背包同步訊息（只傳給本人）：背包、身上的裝備與星幣 */

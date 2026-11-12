@@ -249,6 +249,176 @@
         outline: 2px solid #8fc0ff;
       }
 
+      /* 社交面板、玩家選單、邀請提示 */
+      #social {
+        position: fixed;
+        top: 12px;
+        right: 84px;
+        z-index: 11;
+        color: #fff;
+        font-size: 14px;
+        text-align: right;
+      }
+      #social .inv-body {
+        width: min(300px, calc(100vw - 24px));
+      }
+      .soc-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 6px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        margin-bottom: 3px;
+      }
+      .soc-row.offline {
+        opacity: 0.55;
+      }
+      .soc-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .soc-info {
+        color: #9fb4a8;
+        font-size: 12px;
+      }
+      #social button:not(.inv-toggle),
+      .float-box button {
+        padding: 3px 8px;
+        border: 1px solid #47604f;
+        border-radius: 6px;
+        background: #18222b;
+        color: #fff;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .float-box button.primary {
+        border: none;
+        background: #5fae6b;
+        color: #0d1a12;
+        font-weight: 700;
+      }
+      .soc-action {
+        margin-top: 4px;
+      }
+      .soc-form {
+        display: flex;
+        gap: 6px;
+      }
+      .soc-form input {
+        flex: 1;
+        min-width: 0;
+        padding: 4px 8px;
+        border: 1px solid #47604f;
+        border-radius: 6px;
+        background: #0e141a;
+        color: #fff;
+        font-family: inherit;
+      }
+      .float-box {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border: 1px solid #ffd97a;
+        border-radius: 10px;
+        background: rgba(12, 18, 24, 0.95);
+        color: #fff;
+        font-size: 14px;
+        z-index: 13;
+      }
+      .float-box[hidden] {
+        display: none;
+      }
+      #player-menu {
+        top: 70px;
+      }
+      #social-prompt {
+        top: 124px;
+      }
+
+      /* 任務追蹤 */
+      #quests {
+        position: fixed;
+        top: 210px;
+        left: 12px;
+        width: 210px;
+        padding: 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        font-size: 12px;
+        z-index: 9;
+        box-sizing: border-box;
+      }
+      #quests[hidden] {
+        display: none;
+      }
+      .q-head {
+        color: #ffd97a;
+        margin-bottom: 4px;
+      }
+      .q-item {
+        margin-bottom: 6px;
+      }
+      .q-item.ready .q-title {
+        color: #7dff8a;
+      }
+      .q-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .q-line {
+        color: #c8d6ce;
+      }
+      .q-error {
+        color: #ff9d9d;
+      }
+      .q-abandon {
+        border: none;
+        background: none;
+        color: #8fa399;
+        font-size: 11px;
+        font-family: inherit;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .npc-talk {
+        margin-bottom: 8px;
+        padding: 8px 10px;
+        border-left: 3px solid #5fae6b;
+        background: rgba(255, 255, 255, 0.05);
+        white-space: pre-line;
+      }
+      .npc-quest {
+        margin-bottom: 10px;
+        padding: 8px;
+        border: 1px solid rgba(255, 217, 122, 0.4);
+        border-radius: 8px;
+      }
+      .npc-quest .q-title {
+        color: #ffd97a;
+        margin-bottom: 6px;
+      }
+      .npc-quest button {
+        margin-top: 6px;
+      }
+      .chat-log .chat-party {
+        color: #9fd0ff;
+      }
+      .chat-log .chat-guild {
+        color: #b6f0a0;
+      }
+
       /* NPC 視窗與交易視窗 */
       #npc,
       #trade {

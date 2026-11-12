@@ -12,3 +12,4 @@ export * from './progression';
 export * from './combat';
 export * from './equipment';
 export * from './inventory';
+export * from './quests';

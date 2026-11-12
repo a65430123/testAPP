@@ -62,3 +62,16 @@ export function allocateStat(stats: Stats, statPoints: number, key: keyof Stats)
   stats[key] = value + 1;
   return cost;
 }
+
+/** 隊伍人數上限，以及每多 1 位隊員的經驗加成 */
+export const PARTY_MAX_MEMBERS = 6;
+export const PARTY_EXP_BONUS_PER_MEMBER = 0.1;
+
+/**
+ * 組隊時每位隊員分到的經驗（套用等級差倍率之前）：
+ * 總量每多 1 人增加 10%，再由在場的隊員平分。
+ */
+export function partyExpShare(exp: number, memberCount: number): number {
+  const n = Math.max(1, memberCount);
+  return (exp * (1 + PARTY_EXP_BONUS_PER_MEMBER * (n - 1))) / n;
+}

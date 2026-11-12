@@ -10,6 +10,8 @@ export const PlayerState = schema(
     /** 位置（格座標，浮點數） */
     x: t.number(),
     y: t.number(),
+    /** 所屬公會的名稱；沒有公會時為空字串 */
+    guild: t.string(),
     /** HP 為 0 表示已被擊倒 */
     hp: t.number(),
     maxHp: t.number(),

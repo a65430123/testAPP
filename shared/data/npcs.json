@@ -1,5 +1,6 @@
 [
-  {"id": "c01_grocer", "name": "雜貨商 米露", "type": "shop", "sells": ["potion_hp_s", "potion_sp_s", "feather_return", "sand_starsteel", "sand_starvelvet", "novice_cloth_cap", "novice_tunic", "novice_boots"]},
-  {"id": "c01_smith", "name": "鍛造師 鐵柏", "type": "refine"},
-  {"id": "c01_storage", "name": "倉庫管理員 歐蘿", "type": "storage"}
+  {"id": "c01_guide", "name": "旅團嚮導 希芙", "type": "talk", "dialogue": ["歡迎加入拾星旅團！曦芽鎮南門外就是嫩芽草原。", "鎮上東南角的地窖最近鼠患嚴重，沒有把握可別一個人下去。"]},
+  {"id": "c01_grocer", "name": "雜貨商 米露", "type": "shop", "sells": ["potion_hp_s", "potion_sp_s", "feather_return", "sand_starsteel", "sand_starvelvet", "novice_cloth_cap", "novice_tunic", "novice_boots"], "dialogue": ["歡迎光臨！冒險前記得帶夠藥水。", "黏露珠、絨毛這些素材我都收，價錢公道。"]},
+  {"id": "c01_smith", "name": "鍛造師 鐵柏", "type": "refine", "dialogue": ["想把裝備敲得更結實嗎？帶上星鋼砂或星絨砂來找我。", "精煉到 +4 之前穩得很，再往上就得看運氣了。"]},
+  {"id": "c01_storage", "name": "倉庫管理員 歐蘿", "type": "storage", "dialogue": ["東西太多帶不動？交給我保管吧。", "同一個帳號的角色，都能來我這裡領東西。"]}
 ]

@@ -22,5 +22,17 @@
   {"id": "charm_fluffytail", "name": "絨尾護符", "type": "equipment", "maxStack": 1, "description": "用絨尾兔的尾毛做成的護符。", "sellPrice": 200, "equip": {"type": "accessory", "reqLevel": 3, "maxSp": 10, "stats": {"for": 1}}},
   {"id": "card_bobolu", "name": "啵啵露卡", "type": "card", "maxStack": 99, "description": "鑲嵌於身體防具：MaxHP +60。", "sellPrice": 500, "card": {"type": "body", "bonus": {"maxHp": 60}}},
   {"id": "card_fluffytail", "name": "絨尾兔卡", "type": "card", "maxStack": 99, "description": "鑲嵌於飾品：機運 +2。", "sellPrice": 500, "card": {"type": "accessory", "bonus": {"stats": {"for": 2}}}},
-  {"id": "card_sproutcap", "name": "芽芽菇卡", "type": "card", "maxStack": 99, "description": "鑲嵌於頭部防具：HP 自然回復 +20%。", "sellPrice": 500, "card": {"type": "head", "bonus": {"hpRegenPct": 20}}}
+  {"id": "card_sproutcap", "name": "芽芽菇卡", "type": "card", "maxStack": 99, "description": "鑲嵌於頭部防具：HP 自然回復 +20%。", "sellPrice": 500, "card": {"type": "head", "bonus": {"hpRegenPct": 20}}},
+  {"id": "food_cheese", "name": "乳酪塊", "type": "consumable", "maxStack": 99, "description": "回復 80 HP。", "sellPrice": 20, "effect": {"hp": 80}},
+  {"id": "mat_rat_tail", "name": "鼠尾巴", "type": "material", "maxStack": 999, "description": "竊糧鼠的尾巴。", "sellPrice": 19},
+  {"id": "mat_sticky_silk", "name": "黏蛛絲", "type": "material", "maxStack": 999, "description": "蛛網織娘吐出的黏絲。", "sellPrice": 25},
+  {"id": "mat_venom_sac", "name": "毒囊", "type": "material", "maxStack": 999, "description": "裝著毒液的小囊。", "sellPrice": 70},
+  {"id": "mat_king_tooth", "name": "鼠王金牙", "type": "material", "maxStack": 999, "description": "地窖鼠王引以為傲的金牙。", "sellPrice": 800},
+  {"id": "mat_cellar_key", "name": "地窖鑰匙碎片", "type": "material", "maxStack": 999, "description": "一把舊鑰匙的碎片。", "sellPrice": 300},
+  {"id": "hood_thief", "name": "竊賊頭巾", "type": "equipment", "maxStack": 1, "description": "竊糧鼠戴過的頭巾。", "sellPrice": 300, "equip": {"type": "head", "reqLevel": 10, "def": 5, "eva": 3}},
+  {"id": "gloves_silk", "name": "蛛絲手套", "type": "equipment", "maxStack": 1, "description": "用蛛絲織成的手套，抓握穩固。", "sellPrice": 450, "equip": {"type": "hands", "reqLevel": 14, "def": 4, "hit": 4}},
+  {"id": "cloak_ratking", "name": "鼠王披風", "type": "equipment", "maxStack": 1, "description": "地窖鼠王的披風，輕盈得不可思議。", "sellPrice": 5000, "equip": {"type": "cloak", "reqLevel": 18, "def": 8, "eva": 10, "stats": {"for": 3}}},
+  {"id": "card_grainthief", "name": "竊糧鼠卡", "type": "card", "maxStack": 99, "description": "鑲嵌於飾品：機運 +1、暴擊 +1%。", "sellPrice": 500, "card": {"type": "accessory", "bonus": {"crit": 1, "stats": {"for": 1}}}},
+  {"id": "card_webweaver", "name": "蛛網織娘卡", "type": "card", "maxStack": 99, "description": "鑲嵌於手部防具：命中 +5。", "sellPrice": 500, "card": {"type": "hands", "bonus": {"hit": 5}}},
+  {"id": "card_gru", "name": "葛魯卡", "type": "card", "maxStack": 99, "description": "鑲嵌於披風：迴避 +10、機運 +3。", "sellPrice": 20000, "card": {"type": "cloak", "bonus": {"eva": 10, "stats": {"for": 3}}}}
 ]

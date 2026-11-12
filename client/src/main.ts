@@ -7,6 +7,8 @@ import { showAuth } from './ui/auth';
 import { showCharacterSelect } from './ui/characters';
 import { ChatBox } from './ui/chat';
 import { ItemUi } from './ui/ItemUi';
+import { QuestUi } from './ui/quests';
+import { SocialUi } from './ui/social';
 import { SkillBar } from './ui/skills';
 import { StatusPanel } from './ui/status';
 
@@ -32,6 +34,11 @@ async function obtainSession(): Promise<Session> {
 const session = await obtainSession();
 const chat = new ChatBox();
 const itemUi = new ItemUi();
+const socialUi = new SocialUi(session.character.id);
+const questUi = new QuestUi();
+// NPC 視窗裡的任務區塊由任務介面產生；任務或背包有變動時重畫 NPC 視窗
+itemUi.npc.setQuestSection((npc) => questUi.renderForNpc(npc));
+questUi.onChange(() => itemUi.npc.refresh());
 const status = new StatusPanel(session.character.name, session.character.classId);
 const skills = new SkillBar(session.character.classId);
 
@@ -54,6 +61,8 @@ const game = new Phaser.Game({
       g.registry.set(REGISTRY.session, session);
       g.registry.set(REGISTRY.chat, chat);
       g.registry.set(REGISTRY.itemUi, itemUi);
+      g.registry.set(REGISTRY.socialUi, socialUi);
+      g.registry.set(REGISTRY.questUi, questUi);
       g.registry.set(REGISTRY.status, status);
       g.registry.set(REGISTRY.skills, skills);
     },

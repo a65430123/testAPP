@@ -35,6 +35,11 @@ import {
   type ChatChannel,
   type ChatMessage,
   type ChatSendMessage,
+  type FriendsMessage,
+  type GuildMessage,
+  type PartyMessage,
+  type QuestsMessage,
+  type SocialInviteMessage,
   type CollisionGrid,
   type CombatEvent,
   type InventoryMessage,
@@ -72,6 +77,8 @@ import {
 } from '../net/session';
 import type { ChatBox } from '../ui/chat';
 import type { ItemUi } from '../ui/ItemUi';
+import type { QuestUi } from '../ui/quests';
+import type { SocialUi } from '../ui/social';
 import type { SkillBar } from '../ui/skills';
 import type { StatusPanel } from '../ui/status';
 
@@ -125,6 +132,8 @@ export class WorldScene extends Phaser.Scene {
   private session!: Session;
   private chat!: ChatBox;
   private itemUi!: ItemUi;
+  private socialUi!: SocialUi;
+  private questUi!: QuestUi;
   private statusPanel!: StatusPanel;
   private skillBar!: SkillBar;
 
@@ -208,6 +217,8 @@ export class WorldScene extends Phaser.Scene {
     this.session = this.registry.get(REGISTRY.session) as Session;
     this.chat = this.registry.get(REGISTRY.chat) as ChatBox;
     this.itemUi = this.registry.get(REGISTRY.itemUi) as ItemUi;
+    this.socialUi = this.registry.get(REGISTRY.socialUi) as SocialUi;
+    this.questUi = this.registry.get(REGISTRY.questUi) as QuestUi;
     this.statusPanel = this.registry.get(REGISTRY.status) as StatusPanel;
     this.skillBar = this.registry.get(REGISTRY.skills) as SkillBar;
 
@@ -408,7 +419,7 @@ export class WorldScene extends Phaser.Scene {
           } else if (kind === 'player') {
             const name = this.remotes.get(key)?.entity.name;
             if (name && !this.dead) {
-              this.itemUi.askTrade(key, name);
+              this.socialUi.showPlayerMenu(key, name, () => this.itemUi.askTrade(key, name));
             }
           }
           return;
@@ -472,7 +483,18 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.system, (message: SystemMessage) => this.chat.addSystem(message.text));
     room.onMessage(MSG.moveReject, (message: MoveRejectMessage) => this.onMoveRejected(message));
     room.onMessage(MSG.transfer, (message: TransferMessage) => void this.onTransfer(message));
-    room.onMessage(MSG.inventory, (message: InventoryMessage) => this.itemUi.onInventory(message));
+    room.onMessage(MSG.inventory, (message: InventoryMessage) => {
+      this.itemUi.onInventory(message);
+      // 收集類任務的數量以背包為準
+      this.questUi.setItemCounter((itemId) =>
+        message.items.filter((i) => i.itemId === itemId).reduce((n, i) => n + i.quantity, 0),
+      );
+    });
+    room.onMessage(MSG.quests, (message: QuestsMessage) => this.questUi.onQuests(message));
+    room.onMessage(MSG.party, (message: PartyMessage) => this.socialUi.onParty(message));
+    room.onMessage(MSG.guild, (message: GuildMessage) => this.socialUi.onGuild(message));
+    room.onMessage(MSG.friends, (message: FriendsMessage) => this.socialUi.onFriends(message));
+    room.onMessage(MSG.socialInvite, (message: SocialInviteMessage) => this.socialUi.onInvite(message));
     room.onMessage(MSG.storage, (message: StorageMessage) => this.itemUi.onStorage(message));
     room.onMessage(MSG.tradeRequest, (message: TradeInviteMessage) => this.itemUi.onTradeInvite(message));
     room.onMessage(MSG.tradeState, (message: TradeStateMessage) => this.itemUi.onTradeState(message));
@@ -489,14 +511,16 @@ export class WorldScene extends Phaser.Scene {
       (type, message) => room.send(type, message),
       (text) => this.chat.addSystem(text),
     );
+    this.questUi.bind((type, message) => room.send(type, message));
     this.statusPanel.onAlloc((stat: keyof Stats) => {
       room.send(MSG.allocStat, { stat } satisfies AllocStatRequest);
     });
     this.skillBar.onUse((skill: SkillDef) => this.useSkill(skill));
 
     this.chat.addSystem(`已進入 ${mapDisplayName(this.mapId)}`);
-    // 處理函式都註冊好了，向伺服器要一次背包與個人數值
+    // 處理函式都註冊好了，向伺服器要一次背包、個人數值、任務，以及隊伍、公會、好友
     room.send(MSG.inventory);
+    this.socialUi.bind((type, message) => room.send(type, message));
   }
 
   // ------------------------------------------------------------ 玩家
@@ -508,6 +532,7 @@ export class WorldScene extends Phaser.Scene {
     this.serverChangedAt = this.time.now;
     this.level = player.level;
     this.local = new PlayerEntity(this, this.geo, player.name, player.level, player.x, player.y, true);
+    this.local.setInfo(player.name, player.level, player.guild);
     this.local.setHp(player.hp, player.maxHp);
     this.cameras.main.startFollow(this.local.sprite, true, 0.15, 0.15);
     this.status.setVisible(false);
@@ -517,6 +542,7 @@ export class WorldScene extends Phaser.Scene {
     const buffer = new SnapshotBuffer(SERVER_TICK_MS);
     buffer.reset(performance.now(), player.x, player.y);
     const entity = new PlayerEntity(this, this.geo, player.name, player.level, player.x, player.y, false);
+    entity.setInfo(player.name, player.level, player.guild);
     entity.setHp(player.hp, player.maxHp);
     entity.makeClickable(sessionId);
     this.remotes.set(sessionId, { entity, buffer, lastX: player.x, lastY: player.y });
@@ -532,7 +558,7 @@ export class WorldScene extends Phaser.Scene {
     if (!remote) {
       return;
     }
-    remote.entity.setInfo(player.name, player.level);
+    remote.entity.setInfo(player.name, player.level, player.guild);
     remote.entity.setHp(player.hp, player.maxHp);
     if (player.x !== remote.lastX || player.y !== remote.lastY) {
       remote.lastX = player.x;
@@ -546,7 +572,7 @@ export class WorldScene extends Phaser.Scene {
     if (!local) {
       return;
     }
-    local.setInfo(player.name, player.level);
+    local.setInfo(player.name, player.level, player.guild);
     local.setHp(player.hp, player.maxHp);
     if (player.level > this.level && this.level > 0) {
       this.showFloat(local.sprite.x, local.sprite.y - 90, 'LEVEL UP!', '#ffe14d', 22);
@@ -579,6 +605,7 @@ export class WorldScene extends Phaser.Scene {
   private onSelf(message: SelfMessage): void {
     this.statusPanel.update(message);
     this.skillBar.setState(message.level, message.sp);
+    this.questUi.setLevel(message.level);
   }
 
   // ------------------------------------------------------------ 魔物與掉落物
@@ -832,6 +859,8 @@ export class WorldScene extends Phaser.Scene {
   private detachUi(): void {
     this.chat.onSend(null);
     this.itemUi.unbind();
+    this.socialUi.unbind();
+    this.questUi.unbind();
     this.statusPanel.onAlloc(null);
     this.skillBar.onUse(null);
   }

@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Client } from 'colyseus';
+import type { PoolClient } from 'pg';
 import {
   addToContainer,
   cloneItems,
@@ -71,8 +72,11 @@ export class ItemController {
 
   // ------------------------------------------------------------ 共用機制
 
-  /** 把操作排進玩家的道具佇列；操作內丟出的例外視為「操作失敗」並通知玩家 */
-  private run(runtime: PlayerRuntime, op: () => Promise<void>): void {
+  /**
+   * 把操作排進玩家的道具佇列；操作內丟出的例外視為「操作失敗」並通知玩家。
+   * 任務與公會等會動到道具或星幣的操作也排在同一個佇列裡。
+   */
+  run(runtime: PlayerRuntime, op: () => Promise<void>): void {
     runtime.itemQueue = runtime.itemQueue.then(async () => {
       if (!this.host.isActive(runtime)) {
         return;
@@ -88,9 +92,14 @@ export class ItemController {
 
   /**
    * 把一次異動寫入資料庫（道具、星幣、紀錄在同一個交易內），成功後才更新記憶體並通知用戶端。
-   * 也供交易控制器使用（一次牽涉兩位玩家）。
+   * 也供交易、任務、公會使用。
+   * @param extra 要在同一個資料庫交易內一起執行的其他寫入
    */
-  async commit(changes: RuntimeChange[], logs: ItemLogEntry[]): Promise<void> {
+  async commit(
+    changes: RuntimeChange[],
+    logs: ItemLogEntry[],
+    extra?: (client: PoolClient) => Promise<void>,
+  ): Promise<void> {
     // 有星幣異動時，順便把打怪得到、還沒寫進資料庫的星幣一起寫入，
     // 這樣資料庫的餘額與記憶體一致，不會因為「資料庫裡錢還不夠」而失敗
     const flushed = changes.map((c) => (c.coinsDelta ? c.runtime.record.unsavedCoins : 0));
@@ -106,7 +115,7 @@ export class ItemController {
       ...(c.storage ? { storage: c.storage } : {}),
     }));
     try {
-      await commitItemChange(ownerChanges, logs);
+      await commitItemChange(ownerChanges, logs, extra);
     } catch (err) {
       changes.forEach((c, i) => {
         c.runtime.record.unsavedCoins += flushed[i]!;

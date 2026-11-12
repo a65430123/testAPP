@@ -1,7 +1,7 @@
 // 伺服器進入點：HTTP API + Colyseus 地圖房間
 
 import { Server } from 'colyseus';
-import { MONSTERS, ROOM_MAP, SKILLS, validateGameData } from '@starmemory/shared';
+import { MONSTERS, QUESTS, ROOM_MAP, SKILLS, validateGameData, validateQuests } from '@starmemory/shared';
 import { config } from './config';
 import { runMigrations } from './db/migrate';
 import { pool } from './db/pool';
@@ -9,8 +9,8 @@ import { registerRoutes } from './http';
 import { allMaps } from './maps';
 import { MapRoom } from './rooms/MapRoom';
 
-// 資料表（職業、道具、魔物、技能）互相參照有誤就不啟動
-const dataErrors = validateGameData();
+// 資料表（職業、道具、魔物、技能、NPC、任務）互相參照有誤就不啟動
+const dataErrors = [...validateGameData(), ...validateQuests()];
 if (dataErrors.length > 0) {
   console.error(`[server] 資料表有誤：\n  ${dataErrors.join('\n  ')}`);
   process.exit(1);
@@ -48,7 +48,7 @@ gameServer.onShutdown(async () => {
 
 await gameServer.listen(config.port);
 console.log(`[server] 已啟動，連接埠 ${config.port}`);
-console.log(`[server] 已載入資料表：魔物 ${MONSTERS.length} 種、技能 ${SKILLS.length} 個`);
+console.log(`[server] 已載入資料表：魔物 ${MONSTERS.length} 種、技能 ${SKILLS.length} 個、任務 ${QUESTS.length} 個`);
 console.log(`[server] 已載入地圖：${allMaps().map((m) => `${m.id} ${m.displayName}`).join('、')}`);
 if (config.gmCommands) {
   console.warn('[server] GM 指令已開啟（ENABLE_GM_COMMANDS），請勿用於正式環境');
