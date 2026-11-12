@@ -2,6 +2,7 @@
 
 import pg from 'pg';
 import { config } from '../config';
+import { log } from '../log';
 
 // BIGINT（型別代碼 20）預設會以字串回傳；本專案的經驗值與星幣都在安全整數範圍內，直接轉成數字
 pg.types.setTypeParser(20, (value) => Number(value));
@@ -15,7 +16,7 @@ export const pool = new pg.Pool({
 
 // 閒置連線發生錯誤（例如資料庫重啟）時只記錄，避免整個行程當掉
 pool.on('error', (err) => {
-  console.error('[db] 閒置連線發生錯誤：', err.message);
+  log.error('[db] 閒置連線發生錯誤：', err.message);
 });
 
 /** 在一個交易中執行多個查詢：全部成功才提交，任何一步失敗就全部復原 */

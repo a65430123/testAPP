@@ -30,7 +30,8 @@ if (isProduction && jwtSecret.length < 32) {
   throw new Error('正式環境必須設定 JWT_SECRET（至少 32 個字元）');
 }
 if (!jwtSecret) {
-  console.warn('[server] 未設定 JWT_SECRET，使用開發用金鑰（請勿用於正式環境）');
+  // 這裡還不能用 log 模組（它本身不依賴設定，但為了避免循環匯入，啟動訊息直接輸出）
+  process.stderr.write('[server] 未設定 JWT_SECRET，使用開發用金鑰（請勿用於正式環境）\n');
 }
 
 export const config = {
@@ -44,6 +45,12 @@ export const config = {
   autoMigrate: bool(process.env.AUTO_MIGRATE, true),
   gmCommands: bool(process.env.ENABLE_GM_COMMANDS, false),
   trustProxy: bool(process.env.TRUST_PROXY, false),
+  /** 註冊與登入：同一 IP 每分鐘最多嘗試次數 */
+  authRateLimit: Math.max(1, int(process.env.AUTH_RATE_LIMIT, 20)),
+  /** 嚴重警示要 POST 到哪個網址（Slack、Discord 的 Webhook 都可以）；空字串表示不發送 */
+  alertWebhookUrl: process.env.ALERT_WEBHOOK_URL ?? '',
+  /** 星幣收入監控的統計區間（秒） */
+  economyWindowSec: Math.max(1, int(process.env.ECONOMY_WINDOW_SEC, 600)),
   /** 首領重生時間的倍率（測試時設成很小的數字，就不必真的等 30 分鐘） */
   bossRespawnScale: Math.max(0, Number(process.env.BOSS_RESPAWN_SCALE ?? 1) || 1),
 } as const;

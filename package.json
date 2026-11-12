@@ -23,7 +23,8 @@
     "migrate": "npm run migrate -w @starmemory/server",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
-    "check:content": "npm run check:content -w @starmemory/server"
+    "check:content": "npm run check:content -w @starmemory/server",
+    "admin:grant": "npm run admin:grant -w @starmemory/server --"
   },
   "engines": {
     "node": ">=20"

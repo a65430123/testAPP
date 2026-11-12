@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>星憶旅團 管理後台</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10151b;
+        --panel: #18212a;
+        --line: #2c3a46;
+        --text: #e6edf2;
+        --muted: #8fa1ad;
+        --accent: #5fae6b;
+        --warn: #e0b34f;
+        --danger: #e0655f;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 system-ui, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+      header h1 {
+        margin: 0;
+        font-size: 17px;
+      }
+      nav {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .who {
+        margin-left: auto;
+        color: var(--muted);
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: var(--text);
+        background: #0e141a;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+      }
+      button {
+        cursor: pointer;
+        background: #22303b;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #0d1a12;
+        font-weight: 700;
+      }
+      button.danger {
+        background: #4a2422;
+        border-color: var(--danger);
+      }
+      button.active {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .card {
+        margin-bottom: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+      }
+      .card h2 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .stats {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .stat {
+        min-width: 120px;
+        padding: 10px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+      }
+      .stat b {
+        display: block;
+        font-size: 24px;
+      }
+      .stat span {
+        color: var(--muted);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 5px 8px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .scroll {
+        overflow-x: auto;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .tag {
+        display: inline-block;
+        padding: 0 8px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font-size: 12px;
+      }
+      .tag.alert,
+      .tag.banned {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      .tag.warn {
+        border-color: var(--warn);
+        color: var(--warn);
+      }
+      .tag.online {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .message {
+        min-height: 20px;
+        color: var(--warn);
+      }
+      .login {
+        max-width: 320px;
+        margin: 12vh auto;
+      }
+      .login input,
+      .login button {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 10px;
+      }
+      code {
+        font-size: 12px;
+        color: var(--muted);
+        word-break: break-all;
+      }
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 70px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/admin/admin.ts"></script>
+  </body>
+</html>

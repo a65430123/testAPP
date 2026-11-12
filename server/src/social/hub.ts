@@ -12,6 +12,21 @@ export interface OnlineCharacter {
   send(type: string, message?: unknown): void;
   /** 公會有變動（加入、被踢、解散）時，更新這位玩家在所屬房間裡的資料 */
   setGuild(guild: { id: number; name: string } | null): void;
+  /** 把這位玩家踢下線（封鎖帳號時使用） */
+  kick(code: number): void;
+  /**
+   * GM 發放道具或星幣給這位在線上的玩家（走房間的道具流程，會即時反映在他的背包）。
+   * @returns 成功時回傳 null，否則回傳原因
+   */
+  adminGrant(grant: AdminGrant): Promise<string | null>;
+}
+
+export interface AdminGrant {
+  itemId?: string;
+  quantity?: number;
+  coins?: number;
+  /** 寫進道具異動紀錄的說明（發放的管理員與原因） */
+  detail: Record<string, unknown>;
 }
 
 const online = new Map<number, OnlineCharacter>();
@@ -31,5 +46,14 @@ export const hub = {
   },
   values(): IterableIterator<OnlineCharacter> {
     return online.values();
+  },
+  /** 找出某個帳號目前在線上的角色 */
+  findByAccount(accountId: number): OnlineCharacter | undefined {
+    for (const entry of online.values()) {
+      if (entry.accountId === accountId) {
+        return entry;
+      }
+    }
+    return undefined;
   },
 };

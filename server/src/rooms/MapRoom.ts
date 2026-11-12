@@ -42,6 +42,7 @@ import {
   SERVER_TICK_MS,
   START_MAP_ID,
   STAT_POINTS_PER_LEVEL,
+  type AnnounceMessage,
   type AttackOptions,
   type ChatChannel,
   type ChatMessage,
@@ -59,6 +60,7 @@ import {
 import { verifyToken } from '../auth';
 import { config } from '../config';
 import { loadCharacter, saveCharacter, type CharacterRecord } from '../db/characters';
+import { AntiCheat, type Suspect, type ViolationKind } from '../game/AntiCheat';
 import { ItemController, type ItemHost } from '../game/ItemController';
 import { MonsterManager, type AiTarget, type Monster, type MonsterHost } from '../game/MonsterManager';
 import { QuestController, type QuestHost } from '../game/QuestController';
@@ -67,15 +69,20 @@ import { TradeController, type TradeHost } from '../game/TradeController';
 import { clearBossTimer, loadBossTimers, setBossTimer } from '../db/social';
 import { hub, type OnlineCharacter } from '../social/hub';
 import { partyManager } from '../social/party';
+import { getAccountStatus } from '../db/admin';
+import { recordCoinIncome } from '../security';
 import { getMap, type GameMap } from '../maps';
 import { clearOnline, getOnline, setOnline, type OnlineEntry } from '../online';
 import type { PlayerRuntime } from './runtime';
 import { DropState, MapState, PlayerState } from './schema';
+import { log } from '../log';
 
 /** 世界頻道在各房間之間轉送用的主題名稱 */
 const WORLD_CHAT_TOPIC = 'chat:world';
 /** 全伺服器系統公告（例如首領出現）在各房間之間轉送用的主題名稱 */
-const WORLD_SYSTEM_TOPIC = 'system:world';
+export const WORLD_SYSTEM_TOPIC = 'system:world';
+/** GM 公告在各房間之間轉送用的主題名稱 */
+export const WORLD_ANNOUNCE_TOPIC = 'announce:world';
 /** 送出切換地圖通知後，用戶端最多有多久時間離開房間（毫秒） */
 const TRANSFER_TIMEOUT_MS = 5000;
 /** 同一玩家要求背包內容的最短間隔（毫秒） */
@@ -113,6 +120,10 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
   private readonly onWorldSystem = (message: SystemMessage): void => {
     this.broadcast(MSG.system, message);
   };
+  private readonly onWorldAnnounce = (message: AnnounceMessage): void => {
+    this.broadcast(MSG.announce, message);
+  };
+  private antiCheat!: AntiCheat;
   private readonly runtimes = new Map<string, PlayerRuntime>();
   private readonly drops = new Map<string, DropRuntime>();
   private nextDropId = 1;
@@ -130,39 +141,66 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     this.monsters = new MonsterManager(this);
     // 首領的重生時間存在資料庫：房間重開時延續計時，還沒到時間的首領不會出現
     this.monsters.spawnAll(Date.now(), await loadBossTimers(map.id));
+    this.antiCheat = new AntiCheat(map.id);
     this.items = new ItemController(this);
     this.trade = new TradeController(this, this.items);
     this.social = new SocialController(this, this.items);
     this.quests = new QuestController(this, this.items);
 
-    this.onMessage(MSG.move, (client, message: unknown) => this.handleMove(client, message));
-    this.onMessage(MSG.attack, (client, message: unknown) => this.handleAttack(client, message));
-    this.onMessage(MSG.skill, (client, message: unknown) => this.handleSkill(client, message));
-    this.onMessage(MSG.pickup, (client, message: unknown) => this.handlePickup(client, message));
-    this.onMessage(MSG.useItem, (client, message: unknown) => this.items.handleUseItem(client, message));
-    this.onMessage(MSG.equip, (client, message: unknown) => this.items.handleEquip(client, message));
-    this.onMessage(MSG.unequip, (client, message: unknown) => this.items.handleUnequip(client, message));
-    this.onMessage(MSG.shopBuy, (client, message: unknown) => this.items.handleShopBuy(client, message));
-    this.onMessage(MSG.shopSell, (client, message: unknown) => this.items.handleShopSell(client, message));
-    this.onMessage(MSG.refine, (client, message: unknown) => this.items.handleRefine(client, message));
-    this.onMessage(MSG.cardInsert, (client, message: unknown) => this.items.handleCardInsert(client, message));
-    this.onMessage(MSG.storageOpen, (client, message: unknown) => this.items.handleStorageOpen(client, message));
-    this.onMessage(MSG.storageDeposit, (client, message: unknown) => this.items.handleStorageDeposit(client, message));
-    this.onMessage(MSG.storageWithdraw, (client, message: unknown) => this.items.handleStorageWithdraw(client, message));
-    this.onMessage(MSG.tradeRequest, (client, message: unknown) => this.trade.handleRequest(client, message));
-    this.onMessage(MSG.tradeRespond, (client, message: unknown) => this.trade.handleRespond(client, message));
-    this.onMessage(MSG.tradeOffer, (client, message: unknown) => this.trade.handleOffer(client, message));
-    this.onMessage(MSG.tradeConfirm, (client) => this.trade.handleConfirm(client));
-    this.onMessage(MSG.tradeCancel, (client) => this.trade.handleCancel(client));
-    this.onMessage(MSG.social, (client, message: unknown) => this.social.handle(client, message));
-    this.onMessage(MSG.quest, (client, message: unknown) => this.quests.handle(client, message));
-    this.onMessage(MSG.allocStat, (client, message: unknown) => this.handleAllocStat(client, message));
-    this.onMessage(MSG.chat, (client, message: unknown) => this.handleChat(client, message));
-    this.onMessage(MSG.inventory, (client) => this.handleInventoryRequest(client));
+    // 每個訊息都先過封包頻率限制，再交給各自的處理函式
+    this.guarded(MSG.move, (client, message: unknown) => this.handleMove(client, message));
+    this.guarded(MSG.attack, (client, message: unknown) => this.handleAttack(client, message));
+    this.guarded(MSG.skill, (client, message: unknown) => this.handleSkill(client, message));
+    this.guarded(MSG.pickup, (client, message: unknown) => this.handlePickup(client, message));
+    this.guarded(MSG.useItem, (client, message: unknown) => this.items.handleUseItem(client, message));
+    this.guarded(MSG.equip, (client, message: unknown) => this.items.handleEquip(client, message));
+    this.guarded(MSG.unequip, (client, message: unknown) => this.items.handleUnequip(client, message));
+    this.guarded(MSG.shopBuy, (client, message: unknown) => this.items.handleShopBuy(client, message));
+    this.guarded(MSG.shopSell, (client, message: unknown) => this.items.handleShopSell(client, message));
+    this.guarded(MSG.refine, (client, message: unknown) => this.items.handleRefine(client, message));
+    this.guarded(MSG.cardInsert, (client, message: unknown) => this.items.handleCardInsert(client, message));
+    this.guarded(MSG.storageOpen, (client, message: unknown) => this.items.handleStorageOpen(client, message));
+    this.guarded(MSG.storageDeposit, (client, message: unknown) => this.items.handleStorageDeposit(client, message));
+    this.guarded(MSG.storageWithdraw, (client, message: unknown) => this.items.handleStorageWithdraw(client, message));
+    this.guarded(MSG.tradeRequest, (client, message: unknown) => this.trade.handleRequest(client, message));
+    this.guarded(MSG.tradeRespond, (client, message: unknown) => this.trade.handleRespond(client, message));
+    this.guarded(MSG.tradeOffer, (client, message: unknown) => this.trade.handleOffer(client, message));
+    this.guarded(MSG.tradeConfirm, (client) => this.trade.handleConfirm(client));
+    this.guarded(MSG.tradeCancel, (client) => this.trade.handleCancel(client));
+    this.guarded(MSG.social, (client, message: unknown) => this.social.handle(client, message));
+    this.guarded(MSG.quest, (client, message: unknown) => this.quests.handle(client, message));
+    this.guarded(MSG.allocStat, (client, message: unknown) => this.handleAllocStat(client, message));
+    this.guarded(MSG.chat, (client, message: unknown) => this.handleChat(client, message));
+    this.guarded(MSG.inventory, (client) => this.handleInventoryRequest(client));
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs), SERVER_TICK_MS);
     this.clock.setInterval(() => this.autosave(), AUTOSAVE_INTERVAL_MS);
     await this.presence.subscribe(WORLD_CHAT_TOPIC, this.onWorldChat);
     await this.presence.subscribe(WORLD_SYSTEM_TOPIC, this.onWorldSystem);
+    await this.presence.subscribe(WORLD_ANNOUNCE_TOPIC, this.onWorldAnnounce);
+  }
+
+  /** 註冊訊息處理函式，並在前面加上封包頻率限制 */
+  private guarded(type: string, handler: (client: Client, message: unknown) => void): void {
+    this.onMessage(type, (client, message: unknown) => {
+      if (this.antiCheat.allowMessage(this.suspectOf(client.sessionId), client.sessionId)) {
+        handler(client, message);
+      }
+    });
+  }
+
+  private suspectOf(sessionId: string): Suspect | undefined {
+    const runtime = this.runtimes.get(sessionId);
+    return runtime
+      ? { client: runtime.client, accountId: runtime.record.accountId, characterId: runtime.record.id, name: runtime.record.name }
+      : undefined;
+  }
+
+  /** 記錄一次可疑行為（分數累計太高會被中斷連線） */
+  private flag(runtime: PlayerRuntime, kind: ViolationKind, detail?: Record<string, unknown>): void {
+    const suspect = this.suspectOf(runtime.client.sessionId);
+    if (suspect) {
+      this.antiCheat.flag(suspect, kind, detail);
+    }
   }
 
   /**
@@ -177,6 +215,11 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     const characterId = options?.characterId;
     if (typeof characterId !== 'number' || !Number.isInteger(characterId)) {
       throw new ServerError(400, '未指定角色');
+    }
+    // 被封鎖的帳號即使手上還有有效的 JWT 也不能進入
+    const status = await getAccountStatus(identity.accountId);
+    if (!status || status.bannedUntil !== null) {
+      throw new ServerError(403, '帳號已被封鎖');
     }
 
     // 同一帳號已有角色在線上：先踢掉舊連線並等它存檔完成，才不會讀到舊資料
@@ -298,6 +341,11 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
           void this.social.sendGuild(runtime).catch(() => undefined);
         }
       },
+      kick: (code) => client.leave(code),
+      adminGrant: (grant) => {
+        const runtime = this.runtimes.get(client.sessionId);
+        return runtime ? this.items.adminGrant(runtime, grant) : Promise.resolve('玩家已離線，請再試一次');
+      },
     };
     this.hubEntries.set(client.sessionId, entry);
     hub.set(entry);
@@ -316,6 +364,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     this.state.players.delete(client.sessionId);
     this.monsters.forgetTarget(client.sessionId);
     this.trade.onPlayerGone(client.sessionId);
+    this.antiCheat.remove(client.sessionId);
     const entry = this.hubEntries.get(client.sessionId);
     if (entry) {
       this.hubEntries.delete(client.sessionId);
@@ -334,7 +383,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
         await saveCharacter(runtime.record);
       }
     } catch (err) {
-      console.error(`[room ${this.map.id}] 角色 ${runtime.record.name} 離線存檔失敗：`, err);
+      log.error(`[room ${this.map.id}] 角色 ${runtime.record.name} 離線存檔失敗：`, err);
     } finally {
       clearOnline(runtime.record.accountId, runtime.online);
       runtime.resolveLeft();
@@ -344,6 +393,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
   override onDispose(): void {
     this.presence.unsubscribe(WORLD_CHAT_TOPIC, this.onWorldChat);
     this.presence.unsubscribe(WORLD_SYSTEM_TOPIC, this.onWorldSystem);
+    this.presence.unsubscribe(WORLD_ANNOUNCE_TOPIC, this.onWorldAnnounce);
   }
 
   // ------------------------------------------------------------ MonsterHost：提供給魔物 AI 的資訊
@@ -371,7 +421,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
   /** 首領被擊倒：把重生時間寫進資料庫，並向全伺服器公告 */
   onBossKilled(monster: Monster, respawnAt: number): void {
     setBossTimer(this.map.id, monster.area.name, respawnAt).catch((err: unknown) => {
-      console.error(`[room ${this.map.id}] 首領重生時間寫入失敗：`, err);
+      log.error(`[room ${this.map.id}] 首領重生時間寫入失敗：`, err);
     });
     const minutes = Math.max(1, Math.round((respawnAt - Date.now()) / 60_000));
     this.announce(`${this.map.displayName}的「${monster.def.name}」被擊倒了！約 ${minutes} 分鐘後會再次出現`);
@@ -379,7 +429,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
 
   onBossSpawned(monster: Monster): void {
     clearBossTimer(this.map.id, monster.area.name).catch((err: unknown) => {
-      console.error(`[room ${this.map.id}] 首領重生時間清除失敗：`, err);
+      log.error(`[room ${this.map.id}] 首領重生時間清除失敗：`, err);
     });
     this.announce(`「${monster.def.name}」出現在${this.map.displayName}！`);
   }
@@ -440,7 +490,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       runtime.dirty = false;
       saveCharacter(runtime.record).catch((err: unknown) => {
         runtime.dirty = true; // 失敗就下一輪重試
-        console.error(`[room ${this.map.id}] 角色 ${runtime.record.name} 定時存檔失敗：`, err);
+        log.error(`[room ${this.map.id}] 角色 ${runtime.record.name} 定時存檔失敗：`, err);
       });
     }
   }
@@ -504,6 +554,9 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     const target = message as { x?: unknown; y?: unknown } | null;
     const x = target?.x;
     const y = target?.y;
+    if (!Number.isInteger(x) || !Number.isInteger(y)) {
+      this.flag(runtime, 'invalid', { type: 'move' }); // 正常用戶端只會送整數格座標
+    }
     const valid =
       !runtime.dead &&
       Number.isInteger(x) &&
@@ -569,8 +622,14 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       this.sendSystemTo(client, `${skill.name} 需要等級 ${skill.requiredLevel}`);
       return;
     }
-    if (now < (runtime.cooldowns.get(skill.id) ?? 0)) {
-      return; // 冷卻中（用戶端按鈕本來就會擋，這裡不必提示）
+    const readyAt = runtime.cooldowns.get(skill.id) ?? 0;
+    if (now < readyAt) {
+      // 冷卻驗證：伺服器記著每個技能可以再用的時間，還沒到就不放。
+      // 用戶端的按鈕本來就會擋；差一點點可能是網路延遲，差很多才算可疑
+      if (readyAt - now > 500) {
+        this.flag(runtime, 'cooldown', { skillId: skill.id, remainingMs: readyAt - now });
+      }
+      return;
     }
     if (record.sp < skill.spCost) {
       this.sendSystemTo(client, 'SP 不足');
@@ -600,6 +659,10 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
     }
     // 多給 0.3 格的寬限，補償用戶端畫面與伺服器位置的些微落差
     if (distance(runtime.move, target.move) > skill.range + 0.3) {
+      // 差一兩格可能只是目標剛好走開；差很多就不是正常操作
+      if (distance(runtime.move, target.move) > skill.range + 4) {
+        this.flag(runtime, 'range', { type: 'skill', skillId: skill.id });
+      }
       this.sendSystemTo(client, '距離太遠');
       return;
     }
@@ -719,6 +782,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
         // 打怪的星幣先記在記憶體，定時存檔時再加進資料庫
         owner.record.coins += coins;
         owner.record.unsavedCoins += coins;
+        recordCoinIncome(owner.record, coins);
         owner.dirty = true;
         this.sendInventory(owner);
       }
@@ -847,6 +911,9 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       return; // 已被撿走或消失
     }
     if (distance(runtime.move, state) > PICKUP_RANGE) {
+      if (distance(runtime.move, state) > PICKUP_RANGE + 4) {
+        this.flag(runtime, 'range', { type: 'pickup' });
+      }
       this.sendSystemTo(client, '距離太遠，撿不到');
       return;
     }
@@ -1148,7 +1215,19 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
 
   private updateMovement(runtime: PlayerRuntime, deltaMs: number): void {
     const { move, state, record } = runtime;
+    const fromX = move.x;
+    const fromY = move.y;
     if (!advanceMove(move, deltaMs / 1000, PLAYER_MOVE_SPEED)) {
+      return;
+    }
+    // 速度檢查：移動由伺服器模擬，一個 tick 的位移不可能超過「速度 × 時間」。
+    // 這是防線而不是偵測：若未來的改動讓位移超標（例如誤信用戶端的座標），這裡會擋下並留下紀錄
+    const moved = Math.hypot(move.x - fromX, move.y - fromY);
+    if (moved > PLAYER_MOVE_SPEED * (deltaMs / 1000) * 1.5 + 0.01) {
+      move.x = fromX;
+      move.y = fromY;
+      move.path = [];
+      this.flag(runtime, 'speed', { moved, deltaMs });
       return;
     }
     state.x = move.x;
@@ -1186,7 +1265,7 @@ export class MapRoom extends Room<{ state: MapState }> implements MonsterHost, I
       await saveCharacter(record);
     } catch (err) {
       // 存檔失敗就取消傳送，角色留在原地
-      console.error(`[room ${this.map.id}] 角色 ${record.name} 傳送存檔失敗：`, err);
+      log.error(`[room ${this.map.id}] 角色 ${record.name} 傳送存檔失敗：`, err);
       record.mapId = before.mapId;
       record.x = before.x;
       record.y = before.y;

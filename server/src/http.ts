@@ -29,10 +29,12 @@ import {
   createCharacter,
   listCharacters,
 } from './db/characters';
+import { registerAdminRoutes } from './admin/routes';
+import { getAccountStatus } from './db/admin';
 import { getMap } from './maps';
+import { recordLoginFailure } from './security';
+import { log } from './log';
 
-/** 註冊與登入：同一 IP 每分鐘最多嘗試次數（防止暴力猜密碼） */
-const AUTH_ATTEMPTS_PER_MINUTE = 20;
 
 function sendError(res: Response, status: number, error: string): void {
   const body: ErrorResponse = { error };
@@ -97,7 +99,8 @@ export function registerRoutes(app: Application): void {
   });
   app.use('/api', express.json({ limit: '2kb' }));
 
-  const authLimiter = rateLimit(AUTH_ATTEMPTS_PER_MINUTE);
+  // 註冊與登入：同一 IP 每分鐘的嘗試次數有上限（防止暴力猜密碼）
+  const authLimiter = rateLimit(config.authRateLimit);
 
   // 註冊
   app.post('/api/register', authLimiter, async (req, res) => {
@@ -139,7 +142,16 @@ export function registerRoutes(app: Application): void {
     }
     if (!account || !ok) {
       // 不區分「帳號不存在」與「密碼錯誤」
+      recordLoginFailure(username, req.ip ?? 'unknown');
       sendError(res, 401, '帳號或密碼錯誤');
+      return;
+    }
+    // 密碼正確才告知封鎖狀態，避免被用來探測哪些帳號存在
+    const status = await getAccountStatus(account.id);
+    if (status?.bannedUntil) {
+      const permanent = status.bannedUntil - Date.now() > 50 * 365 * 24 * 3600 * 1000;
+      const until = permanent ? '永久' : `至 ${new Date(status.bannedUntil).toLocaleString('zh-TW', { hour12: false })}`;
+      sendError(res, 403, `帳號已被封鎖（${until}）。原因：${status.banReason ?? '未說明'}`);
       return;
     }
     await touchLastLogin(account.id);
@@ -209,13 +221,15 @@ export function registerRoutes(app: Application): void {
     res.json({ ok: true });
   });
 
+  registerAdminRoutes(app);
+
   // 未預期的錯誤：記錄在伺服器，不把內部細節回傳給用戶端
   app.use('/api', (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (typeof err === 'object' && err !== null && (err as { type?: string }).type?.startsWith('entity.')) {
       sendError(res, 400, '請求內容格式錯誤');
       return;
     }
-    console.error('[http] 未預期的錯誤：', err);
+    log.error('[http] 未預期的錯誤：', err);
     sendError(res, 500, '伺服器發生錯誤，請稍後再試');
   });
 }

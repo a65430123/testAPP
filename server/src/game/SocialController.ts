@@ -33,6 +33,7 @@ import type { PlayerRuntime } from '../rooms/runtime';
 import { hub } from '../social/hub';
 import { partyManager } from '../social/party';
 import type { ItemController } from './ItemController';
+import { log } from '../log';
 
 export interface SocialHost {
   actingPlayer(client: Client): PlayerRuntime | null;
@@ -79,7 +80,7 @@ export class SocialController {
     }
     // 各操作都可能查資料庫；錯誤集中在這裡處理，不讓房間因為一次失敗而出問題
     this.dispatch(runtime, payload.action, payload).catch((err: unknown) => {
-      console.error(`[social] 角色 ${runtime.record.name} 的操作 ${String(payload.action)} 失敗：`, err);
+      log.error(`[social] 角色 ${runtime.record.name} 的操作 ${String(payload.action)} 失敗：`, err);
       this.host.sendSystemTo(client, '操作失敗，請稍後再試');
     });
   }

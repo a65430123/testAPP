@@ -138,6 +138,8 @@ export const MSG = {
   self: 'self',
   /** 伺服器 → 用戶端：戰鬥事件（傷害、未命中、治療），用來顯示數字 */
   combat: 'combat',
+  /** 伺服器 → 用戶端：GM 發布的全伺服器公告（顯示在畫面上方） */
+  announce: 'announce',
   /** 伺服器 → 用戶端：踩到傳送點，請改連另一張地圖的房間 */
   transfer: 'transfer',
 } as const;
@@ -149,6 +151,10 @@ export const CLOSE_CODE = {
   duplicateLogin: 4101,
   /** 切換地圖逾時 */
   transferTimeout: 4102,
+  /** 異常操作過多，被防外掛機制中斷 */
+  antiCheat: 4103,
+  /** 帳號被封鎖 */
+  banned: 4104,
 } as const;
 
 export type ChatChannel = 'map' | 'world' | 'party' | 'guild';
@@ -186,6 +192,11 @@ export interface ChatMessage {
 }
 
 export interface SystemMessage {
+  text: string;
+}
+
+/** GM 公告 */
+export interface AnnounceMessage {
   text: string;
 }
 

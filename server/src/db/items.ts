@@ -26,7 +26,8 @@ export interface ItemLogEntry {
     | 'trade_in'
     | 'guild_create'
     | 'quest_turn_in'
-    | 'quest_reward';
+    | 'quest_reward'
+    | 'admin_grant';
   characterId: number;
   otherCharacterId?: number;
   itemUid?: string;

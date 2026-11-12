@@ -31,6 +31,7 @@ import {
   tileToWorld,
   worldToTile,
   type AllocStatRequest,
+  type AnnounceMessage,
   type AttackRequest,
   type ChatChannel,
   type ChatMessage,
@@ -490,6 +491,7 @@ export class WorldScene extends Phaser.Scene {
         message.items.filter((i) => i.itemId === itemId).reduce((n, i) => n + i.quantity, 0),
       );
     });
+    room.onMessage(MSG.announce, (message: AnnounceMessage) => this.showAnnouncement(message.text));
     room.onMessage(MSG.quests, (message: QuestsMessage) => this.questUi.onQuests(message));
     room.onMessage(MSG.party, (message: PartyMessage) => this.socialUi.onParty(message));
     room.onMessage(MSG.guild, (message: GuildMessage) => this.socialUi.onGuild(message));
@@ -851,8 +853,29 @@ export class WorldScene extends Phaser.Scene {
     }
     this.room = null;
     this.detachUi();
-    const reason = code === CLOSE_CODE.duplicateLogin ? '此角色已在其他地方登入' : '與伺服器的連線已中斷';
+    const reasons: Record<number, string> = {
+      [CLOSE_CODE.duplicateLogin]: '此角色已在其他地方登入',
+      [CLOSE_CODE.antiCheat]: '偵測到異常操作，連線已中斷',
+      [CLOSE_CODE.banned]: '帳號已被封鎖',
+    };
+    const reason = reasons[code] ?? '與伺服器的連線已中斷';
     this.showFatal(`${reason}\n請重新整理頁面`);
+  }
+
+  /** GM 公告：畫面上方的橫幅顯示 10 秒，同時記在聊天視窗裡 */
+  private showAnnouncement(text: string): void {
+    this.chat.addSystem(`【公告】${text}`);
+    let banner = document.getElementById('announce');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'announce';
+      document.body.appendChild(banner);
+    }
+    banner.textContent = `公告：${text}`;
+    banner.hidden = false;
+    window.clearTimeout(Number(banner.dataset.timer));
+    const target = banner;
+    banner.dataset.timer = String(window.setTimeout(() => (target.hidden = true), 10_000));
   }
 
   /** 讓介面元件不再對已經離開的房間送訊息 */

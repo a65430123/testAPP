@@ -23,6 +23,7 @@ import {
 import type { ItemLogEntry } from '../db/items';
 import type { PlayerRuntime } from '../rooms/runtime';
 import type { ItemController } from './ItemController';
+import { log } from '../log';
 
 /** 交易邀請的有效時間（毫秒） */
 const INVITE_TTL_MS = 30_000;
@@ -315,7 +316,7 @@ export class TradeController {
           logs,
         );
       } catch (err) {
-        console.error('[trade] 交易寫入失敗：', err);
+        log.error('[trade] 交易寫入失敗：', err);
         this.end(session, false, '交易失敗，雙方的道具都沒有變動');
         return;
       }
@@ -326,7 +327,7 @@ export class TradeController {
     const joint = Promise.all([a.runtime.itemQueue, b.runtime.itemQueue])
       .then(op)
       .catch((err: unknown) => {
-        console.error('[trade] 交易發生未預期的錯誤：', err);
+        log.error('[trade] 交易發生未預期的錯誤：', err);
         this.end(session, false, '交易失敗');
       });
     a.runtime.itemQueue = joint;

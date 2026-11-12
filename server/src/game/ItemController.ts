@@ -36,6 +36,7 @@ import {
 import { commitItemChange, loadStorage, type ItemLogEntry, type OwnerChange } from '../db/items';
 import type { GameMap } from '../maps';
 import type { PlayerRuntime } from '../rooms/runtime';
+import { log } from '../log';
 
 /** 房間提供給道具控制器的介面 */
 export interface ItemHost {
@@ -84,7 +85,7 @@ export class ItemController {
       try {
         await op();
       } catch (err) {
-        console.error(`[items] 角色 ${runtime.record.name} 的道具操作失敗：`, err);
+        log.error(`[items] 角色 ${runtime.record.name} 的道具操作失敗：`, err);
         this.host.sendSystemTo(runtime.client, '操作失敗，請稍後再試');
       }
     });
@@ -199,6 +200,45 @@ export class ItemController {
       });
       // 不論成功、失敗或被略過（玩家已離線），佇列跑到這裡時回報結果
       void runtime.itemQueue.then(() => resolve(done));
+    });
+  }
+
+  /**
+   * 管理後台發放道具或星幣給在線上的玩家。
+   * @returns 成功時回傳 null，否則回傳原因
+   */
+  adminGrant(
+    runtime: PlayerRuntime,
+    grant: { itemId?: string; quantity?: number; coins?: number; detail: Record<string, unknown> },
+  ): Promise<string | null> {
+    return new Promise((resolve) => {
+      let result: string | null = '玩家已離線，請再試一次';
+      this.run(runtime, async () => {
+        const { record } = runtime;
+        const logs: ItemLogEntry[] = [];
+        const change: RuntimeChange = { runtime };
+        if (grant.itemId && grant.quantity) {
+          const bag = cloneItems(record.inventory);
+          if (!addToContainer(bag, INVENTORY_SIZE, { itemId: grant.itemId, quantity: grant.quantity }, randomUUID)) {
+            result = '對方的背包放不下';
+            return;
+          }
+          change.bag = bag;
+          logs.push({ action: 'admin_grant', characterId: record.id, itemId: grant.itemId, quantity: grant.quantity, detail: grant.detail });
+        }
+        if (grant.coins) {
+          if (record.coins + grant.coins < 0) {
+            result = '扣除後星幣會變成負數';
+            return;
+          }
+          change.coinsDelta = grant.coins;
+          logs.push({ action: 'admin_grant', characterId: record.id, coins: grant.coins, detail: grant.detail });
+        }
+        await this.commit([change], logs);
+        this.host.sendSystemTo(runtime.client, '管理員發放了道具或星幣，請查看背包');
+        result = null;
+      });
+      void runtime.itemQueue.then(() => resolve(result));
     });
   }
 
